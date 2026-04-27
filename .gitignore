@@ -1,0 +1,28 @@
+node_modules/
+dist/
+tmp/
+tsconfig.tsbuildinfo
+.DS_Store
+*.log
+.env
+.env.local
+
+# Per-developer / managed Claude Code state
+.claude/settings.json
+.claude/settings.local.json
+.claude/CLAUDE.local.md
+
+# Symlinks installed by core/scripts/install-agents.sh — repo-local only
+.claude/commands
+.claude/skills/*
+domain-knowledge/
+scripts/hooks/
+personal-knowledge/
+decisions/core
+
+# Core symlinks ignored above; allow our local skills (real dirs)
+!.claude/skills/snap/
+!.claude/skills/regen-asset/
+
+# Keep these even though their parents are ignored
+!.gitignore
