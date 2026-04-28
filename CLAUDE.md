@@ -44,7 +44,7 @@ pnpm build                         # vite build
 pnpm validate-assets               # consumer-side: every public/assets/*.glb has a passing sibling manifest
 
 pnpm tsx scripts/snap.ts           # headless Chromium screenshot to tmp/snap.png + scene state probe
-pnpm tsx scripts/inspect-glb.ts <path>   # dump a .glb's geometry attributes & materials
+pnpm tsx scripts/inspect-glb.ts <path>   # diagnostic: per-mesh attrs, materials, KHR_unlit, vertex-color sample, tri count vs declared budget. `--help` for usage.
 ```
 
 The snap script is the iteration loop while changing visuals: edit code → save → `pnpm tsx scripts/snap.ts` → read `tmp/snap.png`. Vite HMR is on for the live browser.
