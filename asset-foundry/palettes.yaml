@@ -1,0 +1,16 @@
+# Slot-palette hints for MaterialArtist (Phase 0 deterministic mapping).
+# Maps a prop's material slot name (the strings in `props.<id>.materials`) to the
+# hex colour MaterialArtist will assign. Slots not listed here fall back to #888888.
+#
+# Note: this file is *not* the same thing as `world.yaml`'s `palettes:` block.
+# - world.yaml palettes  = biome-level colour tokens (by role: foliage/highlight/...)
+# - palettes.yaml (this) = material-slot → hex hints used by the MaterialArtist node
+#
+# Extracted from src/orchestrator/nodes/material-artist.ts SLOT_COLOR_HINTS as part
+# of ADR-0007 (game-agnostic contract). Each target owns its own slot palette.
+
+bark_white: "#e9e6df"
+bark_dark: "#3a2f25"
+leaf_green: "#4a8a4a"
+leaf_gold: "#d8a64f"
+stone_grey: "#8a8a8c"
