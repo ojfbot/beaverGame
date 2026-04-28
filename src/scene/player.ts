@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { loadValidatedGlb } from "./load-glb";
 import { enforceVertexColorMaterials } from "./materials";
+import { applySoftBound } from "./bounds";
 import type { Terrain } from "./terrain";
 
 const WALK_SPEED = 2.4;
@@ -109,10 +110,14 @@ export async function spawnPlayer(scene: THREE.Scene, opts: PlayerOpts): Promise
       beaver.position.addScaledVector(f, move * speed * dt);
     }
 
-    // Clamp to terrain patch (with margin so we don't stand on the edge fall-off)
-    const margin = opts.terrain.halfExtent - 0.6;
-    beaver.position.x = THREE.MathUtils.clamp(beaver.position.x, -margin, margin);
-    beaver.position.z = THREE.MathUtils.clamp(beaver.position.z, -margin, margin);
+    // Soft-bound to the terrain patch — see BG-002. Hard clamp at edge,
+    // gentle pull-back inside the soft region so the boundary feels cozy.
+    const bounded = applySoftBound(beaver.position, {
+      halfExtent: opts.terrain.halfExtent,
+      hardMargin: 0.6,
+      softMargin: 1.5,
+    });
+    beaver.position.copy(bounded);
 
     // Sit on terrain. Tiny vertical bob while walking adds tactile feedback.
     const ground = opts.terrain.heightAt(beaver.position.x, beaver.position.z);
