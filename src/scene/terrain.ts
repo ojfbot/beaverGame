@@ -241,4 +241,27 @@ export class Terrain {
   get halfExtent(): number {
     return this.size / 2;
   }
+
+  // Build a Float DataTexture of the heightfield for shader sampling. R
+  // channel = world-space Y at that grid cell. Used by the damming water
+  // shader to clip flood fragments where terrain rises above water level.
+  toHeightTexture(): THREE.DataTexture {
+    const N = this.segments + 1;
+    const tex = new THREE.DataTexture(this.heights, N, N, THREE.RedFormat, THREE.FloatType);
+    tex.needsUpdate = true;
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    return tex;
+  }
+
+  // Origin (XZ) of the heightfield in world coords (the corner of the patch).
+  get worldOrigin(): THREE.Vector2 {
+    return new THREE.Vector2(-this.size / 2, -this.size / 2);
+  }
+
+  get worldSize(): number {
+    return this.size;
+  }
 }
