@@ -22,7 +22,11 @@ applyHdriEnvironment(scene, "/assets/hdri/dawn-meadow.hdr").catch(() => {});
     terrain: world.terrain,
     colliders: world.colliders,
   });
-  const felling = createFellingSystem(scene.scene, world.treeStates);
+  const felling = createFellingSystem({
+    scene: scene.scene,
+    trees: world.treeStates,
+    colliders: world.colliders,
+  });
 
   const damming = createDammingSystem({
     scene: scene.scene,
@@ -93,6 +97,13 @@ applyHdriEnvironment(scene, "/assets/hdri/dawn-meadow.hdr").catch(() => {});
       scene.camera.position.set(targetXZ.x, 18, targetXZ.z + 14);
       scene.camera.lookAt(targetXZ.x, 0, targetXZ.z);
     },
+    // Close-up camera framed at a 3D position (for verifying stumps, chips, logs).
+    setCloseupCamera(target: number[]) {
+      scene.setTick(null);
+      const [x, y, z] = target;
+      scene.camera.position.set(x! + 3.5, y! + 2.6, z! + 3.5);
+      scene.camera.lookAt(x!, y! + 0.2, z!);
+    },
     testFellNearestTree() {
       let best = null as null | (typeof world.treeStates)[number];
       let bestDist = Infinity;
@@ -107,10 +118,15 @@ applyHdriEnvironment(scene, "/assets/hdri/dawn-meadow.hdr").catch(() => {});
       stand.y = world.terrain.heightAt(stand.x, stand.z);
       player.group.position.copy(stand);
       player.group.rotation.y = Math.atan2(-away.x, -away.z);
+      // Simulate "hold E" — interactHeld stays true throughout the gnaw window.
+      player.state.interactHeld = true;
       const start = performance.now();
       const id = setInterval(() => {
         player.state.interactQueued = true;
-        if (performance.now() - start > 5000) clearInterval(id);
+        if (performance.now() - start > 5000) {
+          clearInterval(id);
+          player.state.interactHeld = false;
+        }
       }, 80);
       return { tree: best.position.toArray() };
     },
