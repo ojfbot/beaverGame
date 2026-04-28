@@ -65,15 +65,17 @@ function buildDamMarker(damSite: THREE.Vector3): THREE.Group {
   return group;
 }
 
-function buildWaterPlane(worldSize: number): THREE.Mesh {
+function buildWaterPlane(
+  worldSize: number,
+  heightTex: THREE.DataTexture,
+  worldOrigin: THREE.Vector2
+): THREE.Mesh {
   const geom = new THREE.PlaneGeometry(worldSize, worldSize, 32, 32);
   geom.rotateX(-Math.PI / 2);
 
-  // Custom shader for stylized water:
-  //   - solid slate-blue base
-  //   - depth-fade: shallower water (close to terrain) gets a lighter tint
-  //     to read the bottom; deeper water saturates
-  //   - subtle sinusoidal Y displacement gives a living surface
+  // Stylized water: shallow→deep tint by depth, sampled terrain heightmap
+  // discards fragments where the ground rises above water (so the flood is
+  // contained by topography).
   const material = new THREE.ShaderMaterial({
     transparent: true,
     side: THREE.DoubleSide,
@@ -81,15 +83,17 @@ function buildWaterPlane(worldSize: number): THREE.Mesh {
     uniforms: {
       time: { value: 0 },
       waterLevel: { value: 0 },
-      shallowColor: { value: new THREE.Color("#b8d0d6") },
-      deepColor: { value: new THREE.Color("#3a5d72") },
+      heightTex: { value: heightTex },
+      worldOrigin: { value: worldOrigin },
+      worldSize: { value: worldSize },
+      shallowColor: { value: new THREE.Color("#bce0d8") },
+      deepColor: { value: new THREE.Color("#5a8aa0") },
     },
     vertexShader: /* glsl */ `
       uniform float time;
       varying vec3 vWorldPos;
       void main() {
         vec3 p = position;
-        // Gentle ripple
         float w = sin(p.x * 0.45 + time * 0.9) * 0.04 + cos(p.z * 0.6 + time * 1.2) * 0.03;
         p.y += w;
         vec4 wp = modelMatrix * vec4(p, 1.0);
@@ -101,19 +105,24 @@ function buildWaterPlane(worldSize: number): THREE.Mesh {
       uniform vec3 shallowColor;
       uniform vec3 deepColor;
       uniform float waterLevel;
+      uniform sampler2D heightTex;
+      uniform vec2 worldOrigin;
+      uniform float worldSize;
       varying vec3 vWorldPos;
+
       void main() {
-        // Estimated depth = waterLevel - terrainHeightBelow. We don't have the
-        // terrain heightfield in the shader, so use a screen-space proxy: the
-        // fragment's world Y vs waterLevel. Where the water plane intersects
-        // a slope, the fragment's modelled Y is approximately waterLevel +
-        // ripple — but on the plane edges that go above terrain we cull via
-        // alpha (set in the JS update step by depth-fade against terrain).
-        float depth = clamp((waterLevel - vWorldPos.y) * 0.6, 0.0, 1.0);
+        // Sample terrain height at this fragment's world XZ.
+        vec2 uv = (vWorldPos.xz - worldOrigin) / worldSize;
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
+        float groundY = texture2D(heightTex, uv).r;
+
+        // If the ground is above water level here, no water — it's dry land.
+        if (groundY >= waterLevel - 0.01) discard;
+
+        // Depth = how far below waterLevel the ground sits at this XZ.
+        float depth = clamp((waterLevel - groundY) * 0.32, 0.0, 1.0);
         vec3 col = mix(shallowColor, deepColor, depth);
-        // Alpha rises with depth — shallow water is almost transparent so the
-        // creek bed reads through.
-        float a = mix(0.42, 0.85, depth);
+        float a = mix(0.62, 0.85, depth);
         gl_FragColor = vec4(col, a);
       }
     `,
@@ -128,7 +137,8 @@ export function createDammingSystem(opts: DammingOpts): DammingHandles {
   const marker = buildDamMarker(opts.damSite);
   opts.scene.add(marker);
 
-  const waterPlane = buildWaterPlane(opts.worldSize);
+  const heightTex = opts.terrain.toHeightTexture();
+  const waterPlane = buildWaterPlane(opts.worldSize, heightTex, opts.terrain.worldOrigin);
   opts.scene.add(waterPlane);
 
   const handles: DammingHandles = {
