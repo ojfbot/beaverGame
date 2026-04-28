@@ -6,6 +6,7 @@ import { spawnPlayer } from "./scene/player";
 import { createFellingSystem } from "./scene/felling";
 import { createHaulingSystem } from "./scene/hauling";
 import { createDammingSystem } from "./scene/damming";
+import { createUI } from "./ui";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement | null;
 if (!canvas) throw new Error("missing #game canvas");
@@ -32,21 +33,27 @@ applyHdriEnvironment(scene, "/assets/hdri/dawn-meadow.hdr").catch(() => {});
     getWaterLevel: () => damming.waterLevel,
   });
 
+  // UI overlays — minimap top-right, controls bottom-left. Built after all
+  // systems exist because the minimap reads world/felling/damming state.
+  const ui = createUI({ player, world, felling, damming });
+
   scene.setTick((dt, camera) => {
     // Order: felling first (claims interact for gnawing if a tree is in
     // range), then hauling (claims interact for pickup/drop if not), then
     // damming (claims dropped logs near the dam), then player.update
-    // (consumes the speedMultiplier hauling just wrote).
+    // (consumes the speedMultiplier hauling just wrote). UI repaints last
+    // so it shows post-tick state.
     felling.update(dt, player);
     hauling.update(dt, player, felling.logs);
     damming.update(dt, player, hauling, felling.logs);
     player.speedMultiplier = hauling.speedMultiplier;
     player.update(dt, camera);
+    ui.update();
   });
 
   // Debug hatch + programmatic test entry points for the snap script.
   (window as unknown as { __beaver: unknown }).__beaver = {
-    scene, player, world, felling, hauling, damming,
+    scene, player, world, felling, hauling, damming, ui,
     setDamCamera() {
       scene.setTick(null);
       const ds = damming.damSite;
@@ -121,7 +128,10 @@ applyHdriEnvironment(scene, "/assets/hdri/dawn-meadow.hdr").catch(() => {});
       return { log: lp.toArray() };
     },
   };
-  window.addEventListener("beforeunload", () => player.destroy());
+  window.addEventListener("beforeunload", () => {
+    ui.destroy();
+    player.destroy();
+  });
 })().catch((err) => console.error("world spawn failed:", err));
 
 window.addEventListener("resize", () => scene.resize());
