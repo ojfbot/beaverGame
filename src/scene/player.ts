@@ -13,6 +13,9 @@ export interface PlayerHandles {
   // Yaw normal (forward direction), useful for interaction targeting.
   forward: () => THREE.Vector3;
   state: PlayerInputState;
+  // Multiplier applied to walk/sprint speed each frame. Other systems
+  // (hauling, water-as-highway) write here before update() runs.
+  speedMultiplier: number;
   update(dt: number, camera: THREE.PerspectiveCamera): void;
   destroy(): void;
 }
@@ -101,7 +104,7 @@ export async function spawnPlayer(scene: THREE.Scene, opts: PlayerOpts): Promise
     // Forward / back along facing
     const move = (state.forward ? 1 : 0) - (state.backward ? 1 : 0);
     if (move !== 0) {
-      const speed = WALK_SPEED * (state.sprint ? SPRINT_MULT : 1);
+      const speed = WALK_SPEED * (state.sprint ? SPRINT_MULT : 1) * handles.speedMultiplier;
       const f = forward();
       beaver.position.addScaledVector(f, move * speed * dt);
     }
@@ -130,15 +133,17 @@ export async function spawnPlayer(scene: THREE.Scene, opts: PlayerOpts): Promise
     camera.lookAt(cameraTarget);
   }
 
-  return {
+  const handles: PlayerHandles = {
     group: beaver,
     position: beaver.position,
     forward,
     state,
+    speedMultiplier: 1.0,
     update,
     destroy() {
       input.destroy();
       scene.remove(beaver);
     },
   };
+  return handles;
 }
