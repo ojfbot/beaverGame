@@ -59,7 +59,11 @@ applyHdriEnvironment(scene, "/assets/hdri/dawn-meadow.hdr").catch(() => {});
   });
 
   // Debug hatch + programmatic test entry points for the snap script.
-  (window as unknown as { __beaver: unknown }).__beaver = {
+  // Gated to dev builds only — `vite build` strips this whole block via
+  // import.meta.env.DEV constant folding, so production bundles ship without
+  // the test rigs and without the Three.js test-helper imports tree-shake-
+  // would otherwise miss.
+  if (import.meta.env.DEV) (window as unknown as { __beaver: unknown }).__beaver = {
     scene, player, world, felling, hauling, damming, ui,
     setDamCamera() {
       scene.setTick(null);
