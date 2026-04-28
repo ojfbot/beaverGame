@@ -1,27 +1,35 @@
 import * as THREE from "three";
 import { loadValidatedGlb } from "./load-glb";
 import { enforceVertexColorMaterials } from "./materials";
+import type { Terrain } from "./terrain";
 
-const WALK_SPEED = 2.4; // units / second
+const WALK_SPEED = 2.4;
 const SPRINT_MULT = 1.8;
-const TURN_SPEED = 2.6; // radians / second
+const TURN_SPEED = 2.6;
 
 export interface PlayerHandles {
   group: THREE.Group;
+  position: THREE.Vector3;
+  // Yaw normal (forward direction), useful for interaction targeting.
+  forward: () => THREE.Vector3;
+  state: PlayerInputState;
   update(dt: number, camera: THREE.PerspectiveCamera): void;
   destroy(): void;
 }
 
-interface InputState {
+export interface PlayerInputState {
   forward: boolean;
   backward: boolean;
   left: boolean;
   right: boolean;
   sprint: boolean;
+  // Edge-triggered "interact" — the player handler exposes a queue that other
+  // systems (felling, hauling, damming) drain on each frame. Keeps inputs
+  // out of cross-cutting state.
+  interactQueued: boolean;
 }
 
-function createInputBinding(): { state: InputState; destroy(): void } {
-  const state: InputState = { forward: false, backward: false, left: false, right: false, sprint: false };
+function createInputBinding(state: PlayerInputState): { destroy(): void } {
   const set = (e: KeyboardEvent, down: boolean) => {
     switch (e.code) {
       case "KeyW":
@@ -39,6 +47,10 @@ function createInputBinding(): { state: InputState; destroy(): void } {
       case "ShiftLeft":
       case "ShiftRight":
         state.sprint = down; break;
+      case "KeyE":
+        // Edge-trigger: only flag on keydown, not held.
+        if (down) state.interactQueued = true;
+        break;
     }
   };
   const onDown = (e: KeyboardEvent) => set(e, true);
@@ -46,7 +58,6 @@ function createInputBinding(): { state: InputState; destroy(): void } {
   window.addEventListener("keydown", onDown);
   window.addEventListener("keyup", onUp);
   return {
-    state,
     destroy() {
       window.removeEventListener("keydown", onDown);
       window.removeEventListener("keyup", onUp);
@@ -54,47 +65,66 @@ function createInputBinding(): { state: InputState; destroy(): void } {
   };
 }
 
-export async function spawnPlayer(scene: THREE.Scene): Promise<PlayerHandles> {
+export interface PlayerOpts {
+  terrain: Terrain;
+  spawnXZ?: { x: number; z: number };
+}
+
+export async function spawnPlayer(scene: THREE.Scene, opts: PlayerOpts): Promise<PlayerHandles> {
   const beaver = await loadValidatedGlb("/assets/beaver_basic_v1.glb");
   enforceVertexColorMaterials(beaver);
-  beaver.position.set(0, 0, 0);
+
+  const spawnX = opts.spawnXZ?.x ?? 0;
+  const spawnZ = opts.spawnXZ?.z ?? 4;
+  beaver.position.set(spawnX, opts.terrain.heightAt(spawnX, spawnZ), spawnZ);
   scene.add(beaver);
 
-  const input = createInputBinding();
-  const cameraTarget = new THREE.Vector3();
+  const state: PlayerInputState = {
+    forward: false, backward: false, left: false, right: false, sprint: false,
+    interactQueued: false,
+  };
+  const input = createInputBinding(state);
+
+  const cameraOffsetLocal = new THREE.Vector3(0, 2.4, 4.5);
   const cameraDesired = new THREE.Vector3();
-  // Beaver model in Blender faces +Y, which becomes -Z in glTF/Three. So
-  // "behind" the beaver is the +Z direction relative to its facing.
-  const cameraOffset = new THREE.Vector3(0, 2.4, 4.5);
+  const cameraTarget = new THREE.Vector3();
+
+  // Beaver yaw=0 faces -Z (Blender +Y → glTF -Z).
+  const forward = (): THREE.Vector3 =>
+    new THREE.Vector3(-Math.sin(beaver.rotation.y), 0, -Math.cos(beaver.rotation.y));
 
   function update(dt: number, camera: THREE.PerspectiveCamera): void {
-    const s = input.state;
-    // Yaw: A/D rotate the beaver in place
-    const turn = (s.left ? 1 : 0) - (s.right ? 1 : 0);
+    // Yaw
+    const turn = (state.left ? 1 : 0) - (state.right ? 1 : 0);
     beaver.rotation.y += turn * TURN_SPEED * dt;
 
-    // Forward/back along the beaver's facing direction (beaver model points +Y)
-    const move = (s.forward ? 1 : 0) - (s.backward ? 1 : 0);
+    // Forward / back along facing
+    const move = (state.forward ? 1 : 0) - (state.backward ? 1 : 0);
     if (move !== 0) {
-      const speed = WALK_SPEED * (s.sprint ? SPRINT_MULT : 1);
-      // Beaver model faces -Z at yaw=0; flip signs so W moves toward the nose.
-      const forward = new THREE.Vector3(
-        -Math.sin(beaver.rotation.y),
-        0,
-        -Math.cos(beaver.rotation.y)
-      );
-      beaver.position.addScaledVector(forward, move * speed * dt);
-
-      // Lazy bobbing: bob amplitude tied to motion
-      const bob = Math.sin(performance.now() * 0.012) * 0.04;
-      beaver.position.y = Math.max(0, bob);
-    } else {
-      beaver.position.y = 0;
+      const speed = WALK_SPEED * (state.sprint ? SPRINT_MULT : 1);
+      const f = forward();
+      beaver.position.addScaledVector(f, move * speed * dt);
     }
 
-    // 3rd-person follow camera with soft lag.
-    const local = cameraOffset.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), beaver.rotation.y);
-    cameraDesired.copy(beaver.position).add(local);
+    // Clamp to terrain patch (with margin so we don't stand on the edge fall-off)
+    const margin = opts.terrain.halfExtent - 0.6;
+    beaver.position.x = THREE.MathUtils.clamp(beaver.position.x, -margin, margin);
+    beaver.position.z = THREE.MathUtils.clamp(beaver.position.z, -margin, margin);
+
+    // Sit on terrain. Tiny vertical bob while walking adds tactile feedback.
+    const ground = opts.terrain.heightAt(beaver.position.x, beaver.position.z);
+    const bob = move !== 0 ? Math.abs(Math.sin(performance.now() * 0.012)) * 0.04 : 0;
+    beaver.position.y = ground + bob;
+
+    // Camera follow with soft lag
+    const localOffset = cameraOffsetLocal.clone().applyAxisAngle(
+      new THREE.Vector3(0, 1, 0),
+      beaver.rotation.y
+    );
+    cameraDesired.copy(beaver.position).add(localOffset);
+    // Don't let the camera dip below the ground at its XZ
+    const camGround = opts.terrain.heightAt(cameraDesired.x, cameraDesired.z) + 0.4;
+    if (cameraDesired.y < camGround) cameraDesired.y = camGround;
     camera.position.lerp(cameraDesired, Math.min(1, dt * 4.5));
     cameraTarget.lerp(beaver.position.clone().setY(beaver.position.y + 0.7), Math.min(1, dt * 6));
     camera.lookAt(cameraTarget);
@@ -102,6 +132,9 @@ export async function spawnPlayer(scene: THREE.Scene): Promise<PlayerHandles> {
 
   return {
     group: beaver,
+    position: beaver.position,
+    forward,
+    state,
     update,
     destroy() {
       input.destroy();

@@ -13,9 +13,8 @@ applyHdriEnvironment(scene, "/assets/hdri/dawn-meadow.hdr").catch(() => {});
 
 (async () => {
   const world = await composeWorld(scene.scene);
-  const player = await spawnPlayer(scene.scene);
+  const player = await spawnPlayer(scene.scene, { terrain: world.terrain });
   scene.setTick(player.update);
-  // Debug hatch: lets the snap script introspect scene state without polling.
   (window as unknown as { __beaver: unknown }).__beaver = { scene, player, world };
   window.addEventListener("beforeunload", () => player.destroy());
 })().catch((err) => console.error("world spawn failed:", err));

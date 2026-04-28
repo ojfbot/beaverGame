@@ -1,18 +1,29 @@
 import * as THREE from "three";
 import { loadValidatedGlb } from "./load-glb";
 import { enforceVertexColorMaterials } from "./materials";
+import { Terrain } from "./terrain";
 
 export interface WorldHandles {
-  ground: THREE.Group;
-  pond: THREE.Group;
+  terrain: Terrain;
   sky: THREE.Group;
   trees: THREE.Group[];
-  pondCentre: THREE.Vector3;
-  pondRadius: number;
+  // Mode A loop targets — populated as M-β / M-δ land.
+  treeStates: TreeState[];
+  damSite: THREE.Vector3;
 }
 
-// Deterministic scatter of saplings around a centre, biased away from the pond.
-// Seeded by the prop_id so the foundry artefact and the layout stay in sync.
+export interface TreeState {
+  group: THREE.Group;
+  position: THREE.Vector3;
+  // 0 = standing, 0..1 = gnaw progress, then "falling" plays out as a tween,
+  // then "fallen" with a log spawned at the trunk base. Filled in M-β.
+  status: "standing" | "gnawing" | "falling" | "fallen";
+  gnawProgress: number;
+  fallTimer: number;
+  fallAxis: THREE.Vector3 | null;
+}
+
+// Deterministic Mulberry32 (kept to a single seed source).
 function* mulberry32(seed: number): Generator<number> {
   let a = seed >>> 0;
   while (true) {
@@ -24,83 +35,87 @@ function* mulberry32(seed: number): Generator<number> {
   }
 }
 
-interface ScatterPlacement {
-  position: THREE.Vector3;
-  rotationY: number;
-  scale: number;
-}
+export async function composeWorld(scene: THREE.Scene, seed = 0xc02ff): Promise<WorldHandles> {
+  // ── Lighting (we now have a Lambert terrain that wants real light)
+  // Hemisphere = soft sky/ground bounce; Directional = the sun.
+  const hemi = new THREE.HemisphereLight(0xffe9c2, 0x4d6a3a, 0.55);
+  scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xfff2cc, 0.95);
+  sun.position.set(15, 22, 8);
+  sun.castShadow = false; // shadows would be nice but they're a polish item
+  scene.add(sun);
 
-function scatterPositions(
-  count: number,
-  centre: THREE.Vector3,
-  innerRadius: number,
-  outerRadius: number,
-  seed: number
-): ScatterPlacement[] {
-  const rng = mulberry32(seed);
-  const out: ScatterPlacement[] = [];
-  for (let i = 0; i < count; i++) {
-    const angle = rng.next().value! * Math.PI * 2;
-    const r = innerRadius + rng.next().value! * (outerRadius - innerRadius);
-    const x = centre.x + Math.cos(angle) * r;
-    const z = centre.z + Math.sin(angle) * r;
-    const y = 0;
-    out.push({
-      position: new THREE.Vector3(x, y, z),
-      rotationY: rng.next().value! * Math.PI * 2,
-      scale: 0.85 + rng.next().value! * 0.5,
-    });
-  }
-  return out;
-}
+  // ── Terrain (M-α)
+  const terrain = new Terrain({
+    size: 40,
+    segments: 96,
+    seed,
+    amplitude: 3.2,
+  });
+  scene.add(terrain.group);
 
-export async function composeWorld(scene: THREE.Scene): Promise<WorldHandles> {
-  // Load assets in parallel — the dev-mode loader will block on each
-  // .validation.json, but the network round-trips overlap.
-  const [groundGlb, pondGlb, skyGlb, saplingTemplate] = await Promise.all([
-    loadValidatedGlb("/assets/ground_pond_meadow_v1.glb"),
-    loadValidatedGlb("/assets/water_pond_v1.glb"),
-    loadValidatedGlb("/assets/sky_dome_v1.glb"),
-    loadValidatedGlb("/assets/birch_sapling_v1.glb"),
-  ]);
-
-  enforceVertexColorMaterials(groundGlb);
+  // ── Sky dome (kept from Phase 0 — sits around the world)
+  const skyGlb = await loadValidatedGlb("/assets/sky_dome_v1.glb");
   enforceVertexColorMaterials(skyGlb);
-  enforceVertexColorMaterials(saplingTemplate);
-  enforceVertexColorMaterials(pondGlb, { translucent: true });
-
-  scene.add(groundGlb);
   scene.add(skyGlb);
 
-  // Pond ahead and to the left of the spawn (camera looks toward -Z).
-  const pondCentre = new THREE.Vector3(-3, 0, -5);
-  pondGlb.position.copy(pondCentre);
-  scene.add(pondGlb);
-
-  // ~14 saplings between r=3 and r=11, biased forward so the spawn view feels
-  // populated (the camera looks toward -Z). Trees inside the pond radius are
-  // rejected and back-half over-sampled trees are dropped.
-  const placements = scatterPositions(
-    28,
-    new THREE.Vector3(0, 0, 0),
-    3,
-    11,
-    /*seed*/ 0xc02ff
-  )
-    .filter((p) => p.position.distanceTo(pondCentre) > 5)
-    .filter((p) => p.position.z < 6) // keep trees mostly in front of the camera
-    .slice(0, 14);
+  // ── Tree scatter
+  // Reject placements where slope > ~25° or where the tree would clip into
+  // the creek bed (low elevation). Keep within the playable patch with a
+  // safety margin from the edge.
+  const sapling = await loadValidatedGlb("/assets/birch_sapling_v1.glb");
+  enforceVertexColorMaterials(sapling);
 
   const trees: THREE.Group[] = [];
-  for (const p of placements) {
-    const inst = saplingTemplate.clone(true);
-    inst.position.copy(p.position);
-    inst.rotation.y = p.rotationY;
-    inst.scale.setScalar(p.scale);
+  const treeStates: TreeState[] = [];
+  const rng = mulberry32(seed + 99);
+  const target = 32; // target tree count
+  const maxAttempts = target * 8;
+  const minSpacing = 1.6;
+  const placed: THREE.Vector3[] = [];
+  const half = terrain.halfExtent - 2;
+  let attempts = 0;
+  while (placed.length < target && attempts < maxAttempts) {
+    attempts++;
+    const x = (rng.next().value! - 0.5) * 2 * half;
+    const z = (rng.next().value! - 0.5) * 2 * half;
+    const y = terrain.heightAt(x, z);
+    const slope = terrain.slopeAt(x, z);
+    if (slope > 0.45) continue; // too steep
+    if (y < 0.35) continue; // creek bed
+    // Spacing
+    let tooClose = false;
+    for (const p of placed) {
+      if (p.distanceTo(new THREE.Vector3(x, y, z)) < minSpacing) {
+        tooClose = true;
+        break;
+      }
+    }
+    if (tooClose) continue;
+    placed.push(new THREE.Vector3(x, y, z));
+
+    const inst = sapling.clone(true);
     enforceVertexColorMaterials(inst);
+    inst.position.set(x, y, z);
+    inst.rotation.y = rng.next().value! * Math.PI * 2;
+    inst.scale.setScalar(0.85 + rng.next().value! * 0.55);
     scene.add(inst);
     trees.push(inst);
+    treeStates.push({
+      group: inst,
+      position: inst.position.clone(),
+      status: "standing",
+      gnawProgress: 0,
+      fallTimer: 0,
+      fallAxis: null,
+    });
   }
 
-  return { ground: groundGlb, pond: pondGlb, sky: skyGlb, trees, pondCentre, pondRadius: 4.5 };
+  return {
+    terrain,
+    sky: skyGlb,
+    trees,
+    treeStates,
+    damSite: terrain.damSite,
+  };
 }
