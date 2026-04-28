@@ -30,7 +30,19 @@ const SETTLE_MS = Number(process.env.SNAP_SETTLE_MS ?? 1500);
 
   // Optional scenario: SNAP_SCENARIO=fell-tree
   const scenario = process.env.SNAP_SCENARIO;
-  if (scenario === "fell-tree" || scenario === "fell-tree-overview") {
+  if (scenario === "fell-and-haul") {
+    // Full M-γ proof: fell, then pickup. Snap shows beaver carrying the log.
+    await page.evaluate(() => {
+      const w = window as unknown as { __beaver?: { testFellNearestTree?: () => unknown } };
+      return w.__beaver?.testFellNearestTree?.();
+    });
+    await page.waitForTimeout(5500);
+    await page.evaluate(() => {
+      const w = window as unknown as { __beaver?: { testPickUpNearestLog?: () => unknown } };
+      return w.__beaver?.testPickUpNearestLog?.();
+    });
+    await page.waitForTimeout(800);
+  } else if (scenario === "fell-tree" || scenario === "fell-tree-overview") {
     const target = await page.evaluate(() => {
       const w = window as unknown as { __beaver?: { testFellNearestTree?: () => unknown } };
       return w.__beaver?.testFellNearestTree?.() as { tree: number[] } | null;
@@ -77,6 +89,9 @@ const SETTLE_MS = Number(process.env.SNAP_SETTLE_MS ?? 1500);
         return counts;
       })(),
       logCount: w.__beaver?.felling?.logs?.length ?? 0,
+      logStatuses: (w.__beaver?.felling?.logs ?? []).map((l: any) => l.status),
+      carriedLog: w.__beaver?.hauling?.carriedLog ? "yes" : "no",
+      speedMultiplier: w.__beaver?.hauling?.speedMultiplier ?? null,
       vertexColorSamples: (() => {
         const out: any[] = [];
         scene?.scene?.traverse?.((node: any) => {
