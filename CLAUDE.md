@@ -77,10 +77,25 @@ Cluster-wide ADRs are accessible at `decisions/core/adr/` (symlink — read-only
 
 The full ojfbot skill tree is symlinked into `.claude/skills/` via `core/scripts/install-agents.sh`. Useful here: `/scaffold`, `/adr`, `/validate`, `/hardening`, `/deploy`, `/sweep`. Run `/init` to refresh this file or `/recon` for a structured codebase tour.
 
-## Punch list
+## Current state
 
-- Commit a Poly Haven HDRI under `public/assets/hdri/` so `applyHdriEnvironment` lights anything we add later.
-- Wire CI: `.github/workflows/ci.yml` running `pnpm typecheck && pnpm test && pnpm build` plus a snap-and-diff visual regression step.
-- Add a Vitest test for `load-glb.ts` covering the dev-mode validation tripwire.
-- Bound the WASD controller to the ground patch (currently the beaver walks straight off into fog).
-- Replace the deterministic mulberry32 scatter with Poisson-disk sampling for evener tree spread.
+See [`.github/planning/MODE_A_CURRENT_STATE.md`](.github/planning/MODE_A_CURRENT_STATE.md) for what's actually shipped (Mode A vertical slice + UI overlays + collision). Read this before adding a new system — it documents the tick order, the cross-system contracts, and the ADR/PR provenance per piece.
+
+## Punch list (active)
+
+- **BG-001** Commit a Poly Haven HDRI under `public/assets/hdri/`. Currently `applyHdriEnvironment` is a no-op because no HDRI is committed; getting one in keeps the lighting code path exercised before we add lit materials.
+- **BG-003** CI snap-and-diff visual regression on top of the existing `typecheck + test + build` workflow.
+- **BG-004** Vitest coverage for `load-glb.ts`'s dev-mode validation tripwire (cross-repo seam, currently zero tests).
+- **BG-005** Replace the deterministic mulberry32 scatter with Poisson-disk sampling for evener tree spread.
+- **BG-015** Audit `enforceVertexColorMaterials`: foundry exports as `MeshStandardMaterial` (not `KHR_materials_unlit`); the runtime patch is doing real work, not belt-and-braces. Cross-repo with asset-foundry.
+- **birch_log fixture** — replace the inline procedural log mesh in `src/scene/log.ts` with a foundry-generated asset (round-trips the asset contract one more time).
+
+## Closed since the last reconcile
+
+- ✅ **BG-002** Bound the WASD controller — soft pull-back instead of hard wall, tested in `src/scene/bounds.test.ts` (PR [#20](https://github.com/ojfbot/beaverGame/pull/20))
+- ✅ **BG-008** Terrain heightfield — multi-octave value noise, slope-aware tree scatter, vertex-coloured grass→creek→highland gradient (sandbox-loop M-α, PR [#2](https://github.com/ojfbot/beaverGame/pull/2))
+- ✅ **BG-007** Water shader spike — height-clipped fragment shader with depth-fade tint, decision recorded as Option B for AF-009 (sandbox-loop M-δ + M-ε)
+- ✅ **BG-012/013/014** Felling / hauling / damming basic loop (sandbox-loop M-β/γ/δ, PR [#23](https://github.com/ojfbot/beaverGame/pull/23) added held-E gnaw, wood chips, stump after fall, plus collision)
+- ✅ **BG-017** `inspect-glb.ts` polish (PR [#20](https://github.com/ojfbot/beaverGame/pull/20))
+- ✅ **UI overlays** Minimap + keybind help panel (PR [#21](https://github.com/ojfbot/beaverGame/pull/21))
+- ✅ **Trunk collision** Cylinder colliders, swap to stump on fall (PR [#23](https://github.com/ojfbot/beaverGame/pull/23))
