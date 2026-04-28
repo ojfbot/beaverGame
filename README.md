@@ -13,7 +13,7 @@ pnpm dev
 pnpm build
 ```
 
-Open <http://localhost:5173> after `pnpm dev`. The Phase 0 spike shows a stylized birch sapling rotating slowly in a procedurally lit scene.
+Open <http://localhost:5173> after `pnpm dev`. The current build features procedural heightfield terrain, tree felling, log hauling with land/water speed modifiers, dam building with rising water, and terrain-clipped water rendering.
 
 ## Architecture
 
@@ -28,7 +28,15 @@ Read [`CLAUDE.md`](CLAUDE.md) for the project map and key ADRs, then [`decisions
 - [x] Procedural environment lighting (HDRI substitute until Phase 1)
 - [x] One asset (`birch_sapling`) round-trips from foundry → validator → browser
 - [ ] Committed HDRI replacing the `RoomEnvironment` fallback
-- [ ] CI workflow (typecheck + test + build) gating PRs
+- [x] CI workflow (typecheck + test + build) gating PRs
+
+## Vertical-slice milestones
+
+- [x] M-α · Procedural heightfield terrain
+- [x] M-β · Approach + hold E to fell tree, spawn log
+- [x] M-γ · Pickup, carry, drop with land/water speed modifiers
+- [x] M-δ · Build dam, water rises behind it
+- [x] M-ε · Terrain-clipped water + tuned palette
 
 ## License
 
