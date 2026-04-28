@@ -19,7 +19,7 @@ describe("SceneBootstrap", () => {
     const canvas = { clientWidth: 800, clientHeight: 600 } as HTMLCanvasElement;
     const scene = new SceneBootstrap(canvas);
     expect(scene.scene).toBeDefined();
-    expect(scene.camera.fov).toBe(45);
+    expect(scene.camera.fov).toBe(50);
   });
 
   it("destroy is idempotent and stops the loop", () => {
