@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { loadValidatedGlb } from "./load-glb";
 import { enforceVertexColorMaterials } from "./materials";
 import { Terrain } from "./terrain";
+import { createColliderRegistry, type ColliderRegistry } from "./collision";
 
 export interface WorldHandles {
   terrain: Terrain;
@@ -10,6 +11,8 @@ export interface WorldHandles {
   // Mode A loop targets — populated as M-β / M-δ land.
   treeStates: TreeState[];
   damSite: THREE.Vector3;
+  // Cylinder colliders — trees, stumps, future props. Player.update reads.
+  colliders: ColliderRegistry;
 }
 
 export interface TreeState {
@@ -21,6 +24,9 @@ export interface TreeState {
   gnawProgress: number;
   fallTimer: number;
   fallAxis: THREE.Vector3 | null;
+  // Each tree exposes a stable id used to keep its collider in sync as state
+  // changes (standing → fallen flips trunk collider for stump collider).
+  id: string;
 }
 
 // Deterministic Mulberry32 (kept to a single seed source).
@@ -68,6 +74,7 @@ export async function composeWorld(scene: THREE.Scene, seed = 0xc02ff): Promise<
 
   const trees: THREE.Group[] = [];
   const treeStates: TreeState[] = [];
+  const colliders = createColliderRegistry();
   const rng = mulberry32(seed + 99);
   const target = 32; // target tree count
   const maxAttempts = target * 8;
@@ -101,6 +108,7 @@ export async function composeWorld(scene: THREE.Scene, seed = 0xc02ff): Promise<
     inst.scale.setScalar(0.85 + rng.next().value! * 0.55);
     scene.add(inst);
     trees.push(inst);
+    const treeId = `tree-${treeStates.length}`;
     treeStates.push({
       group: inst,
       position: inst.position.clone(),
@@ -108,6 +116,17 @@ export async function composeWorld(scene: THREE.Scene, seed = 0xc02ff): Promise<
       gnawProgress: 0,
       fallTimer: 0,
       fallAxis: null,
+      id: treeId,
+    });
+
+    // Trunk collider — radius matches the bpy fixture's base trunk radius
+    // (~0.05 base × the random per-tree scale, padded a touch so the player
+    // can't visually overlap the trunk silhouette).
+    colliders.add({
+      id: treeId,
+      cx: x,
+      cz: z,
+      radius: 0.18 * inst.scale.x,
     });
   }
 
@@ -117,5 +136,6 @@ export async function composeWorld(scene: THREE.Scene, seed = 0xc02ff): Promise<
     trees,
     treeStates,
     damSite: terrain.damSite,
+    colliders,
   };
 }

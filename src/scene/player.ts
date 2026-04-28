@@ -3,6 +3,9 @@ import { loadValidatedGlb } from "./load-glb";
 import { enforceVertexColorMaterials } from "./materials";
 import { applySoftBound } from "./bounds";
 import type { Terrain } from "./terrain";
+import type { ColliderRegistry } from "./collision";
+
+const PLAYER_RADIUS = 0.30;
 
 const WALK_SPEED = 2.4;
 const SPRINT_MULT = 1.8;
@@ -71,6 +74,9 @@ function createInputBinding(state: PlayerInputState): { destroy(): void } {
 
 export interface PlayerOpts {
   terrain: Terrain;
+  // Optional — if provided, the player resolves against cylinder colliders
+  // (trees, stumps) every frame after movement and before terrain-snap.
+  colliders?: ColliderRegistry;
   spawnXZ?: { x: number; z: number };
 }
 
@@ -108,6 +114,14 @@ export async function spawnPlayer(scene: THREE.Scene, opts: PlayerOpts): Promise
       const speed = WALK_SPEED * (state.sprint ? SPRINT_MULT : 1) * handles.speedMultiplier;
       const f = forward();
       beaver.position.addScaledVector(f, move * speed * dt);
+    }
+
+    // Resolve against cylinder colliders (trees, stumps) first — this can
+    // shove the player a few cm; the terrain bound gets the final say next.
+    if (opts.colliders) {
+      const r = opts.colliders.resolve(beaver.position.x, beaver.position.z, PLAYER_RADIUS);
+      beaver.position.x = r.x;
+      beaver.position.z = r.z;
     }
 
     // Soft-bound to the terrain patch — see BG-002. Hard clamp at edge,
