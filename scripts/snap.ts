@@ -28,6 +28,24 @@ const SETTLE_MS = Number(process.env.SNAP_SETTLE_MS ?? 1500);
   await page.goto(URL, { waitUntil: "networkidle" });
   await page.waitForTimeout(SETTLE_MS);
 
+  // Optional scenario: SNAP_SCENARIO=fell-tree
+  const scenario = process.env.SNAP_SCENARIO;
+  if (scenario === "fell-tree" || scenario === "fell-tree-overview") {
+    const target = await page.evaluate(() => {
+      const w = window as unknown as { __beaver?: { testFellNearestTree?: () => unknown } };
+      return w.__beaver?.testFellNearestTree?.() as { tree: number[] } | null;
+    });
+    // Wait long enough for gnaw + fall (gnaw ~2.6s, fall 1s, plus settle).
+    await page.waitForTimeout(5500);
+    if (scenario === "fell-tree-overview" && target) {
+      await page.evaluate((t: number[]) => {
+        const w = window as unknown as { __beaver?: { setOverviewCamera?: (xz: { x: number; z: number }) => void } };
+        w.__beaver?.setOverviewCamera?.({ x: t[0]!, z: t[2]! });
+      }, target.tree);
+      await page.waitForTimeout(500);
+    }
+  }
+
   const buf = await page.screenshot({ type: "png" });
   writeFileSync(OUT, buf);
   writeFileSync(join("tmp", "snap.console.txt"), consoleLines.join("\n"));
@@ -51,6 +69,14 @@ const SETTLE_MS = Number(process.env.SNAP_SETTLE_MS ?? 1500);
         pos: c.position.toArray(),
         visible: c.visible,
       })),
+      treeStateCounts: (() => {
+        const counts: Record<string, number> = {};
+        for (const t of (w.__beaver?.world?.treeStates ?? [])) {
+          counts[t.status] = (counts[t.status] ?? 0) + 1;
+        }
+        return counts;
+      })(),
+      logCount: w.__beaver?.felling?.logs?.length ?? 0,
       vertexColorSamples: (() => {
         const out: any[] = [];
         scene?.scene?.traverse?.((node: any) => {
