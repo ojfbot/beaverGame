@@ -30,7 +30,15 @@ const SETTLE_MS = Number(process.env.SNAP_SETTLE_MS ?? 1500);
 
   // Optional scenario: SNAP_SCENARIO=fell-tree
   const scenario = process.env.SNAP_SCENARIO;
-  if (scenario === "fell-and-haul") {
+  if (scenario === "dam-built") {
+    // Full M-α → M-δ chain: build the dam, frame it from above.
+    await page.evaluate(async () => {
+      const w = window as unknown as { __beaver?: { testBuildDam?: (n: number) => Promise<unknown>; setDamCamera?: () => void } };
+      await w.__beaver?.testBuildDam?.(5);
+      w.__beaver?.setDamCamera?.();
+    });
+    await page.waitForTimeout(2500); // let the water lerp to its target
+  } else if (scenario === "fell-and-haul") {
     // Full M-γ proof: fell, then pickup. Snap shows beaver carrying the log.
     await page.evaluate(() => {
       const w = window as unknown as { __beaver?: { testFellNearestTree?: () => unknown } };
@@ -92,6 +100,9 @@ const SETTLE_MS = Number(process.env.SNAP_SETTLE_MS ?? 1500);
       logStatuses: (w.__beaver?.felling?.logs ?? []).map((l: any) => l.status),
       carriedLog: w.__beaver?.hauling?.carriedLog ? "yes" : "no",
       speedMultiplier: w.__beaver?.hauling?.speedMultiplier ?? null,
+      damLogCount: w.__beaver?.damming?.damLogs?.length ?? 0,
+      waterLevel: w.__beaver?.damming?.waterLevel ?? null,
+      damSite: w.__beaver?.damming?.damSite?.toArray?.() ?? null,
       vertexColorSamples: (() => {
         const out: any[] = [];
         scene?.scene?.traverse?.((node: any) => {
