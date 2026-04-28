@@ -97,7 +97,7 @@ CLAUDE.md punch list. The snap script is already the right primitive for a visua
 
 ## Worth flagging
 
-This issue and asset-foundry/AF-003 (foundry-side visual regression) form a two-layer regression story: foundry catches asset regressions in isolation, beaverGame catches scene-composition regressions. Both layers earn their keep; neither is redundant.
+This issue and ojfbot/asset-foundry#4 (foundry-side visual regression) form a two-layer regression story: foundry catches asset regressions in isolation, beaverGame catches scene-composition regressions. Both layers earn their keep; neither is redundant.
 """,
     },
     {
@@ -181,7 +181,7 @@ Implement all three rigs as toggleable in dev. Snap script captures all three. D
         "body": """
 ## Context
 
-Mode A needs a pond. Mode B needs the pond to flood. The water shader is the bridge between them, and the wet-state-variant ADR (asset-foundry/AF-009) cascades through the shader's design. Spike before committing to either repo's Phase 4 scope.
+Mode A needs a pond. Mode B needs the pond to flood. The water shader is the bridge between them, and the wet-state-variant ADR (ojfbot/asset-foundry#10) cascades through the shader's design. Spike before committing to either repo's Phase 4 scope.
 
 ## Spike scope (time-boxed: 1 week)
 
@@ -193,7 +193,7 @@ Mode A needs a pond. Mode B needs the pond to flood. The water shader is the bri
 
 ## Exit criterion
 
-A definitive answer to: "is shader-driven wet-state visually convincing for the watershed mode?" If yes → adopt Option B in asset-foundry/AF-009. If no → Option A or C.
+A definitive answer to: "is shader-driven wet-state visually convincing for the watershed mode?" If yes → adopt Option B in ojfbot/asset-foundry#10. If no → Option A or C.
 
 ## Worth flagging
 
@@ -313,7 +313,7 @@ First Mode A verb beyond locomotion. Hold-to-gnaw, tree falls in the direction o
 - [ ] Direction of the fall determined by the player's position relative to the tree at fell-completion
 - [ ] Tree animation: pivots from base, accelerates, lands with a particle puff and audio
 - [ ] Fallen tree becomes 2–5 log pickups based on the tree's `tri_budget`/scale
-- [ ] Affordance metadata (asset-foundry/AF-008) consumed: only `affordance: fellable` props are gnawable
+- [ ] Affordance metadata (ojfbot/asset-foundry#9) consumed: only `affordance: fellable` props are gnawable
 - [ ] Snap captures mid-fell and post-fell states
 
 ## Worth flagging
