@@ -1,0 +1,11 @@
+# Source of truth for milestones in this repo.
+# `scripts/seed-github.sh` reads this and creates them via `gh api`.
+
+- title: "M1 · Phase 0 close-out"
+  description: "Punch list complete, snap loop in CI, validation tripwire tests."
+- title: "M2 · Mode A core"
+  description: "Camera ADR resolved, controller bounded, water shader, terrain."
+- title: "M3 · Mode A playable"
+  description: "Building loop, day/night cycle, save state."
+- title: "M4 · Mode B Watershed"
+  description: "Water sim spike, suburb assets, twilight cycle, NPC fixtures."
