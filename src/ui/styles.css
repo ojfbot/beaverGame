@@ -1,0 +1,108 @@
+/* UI overlays: minimap + controls panel.
+ *
+ * Both panels are fixed-positioned over the WebGL canvas with pointer-events
+ * disabled by default so the canvas keeps focus for keyboard/mouse input.
+ * Cozy register: low-contrast, soft drop shadow, never bright enough to fight
+ * the painterly camera shot. */
+
+:root {
+  --ui-bg: rgba(255, 255, 255, 0.55);
+  --ui-bg-deep: rgba(216, 228, 210, 0.85);
+  --ui-fg: #2a3825;
+  --ui-fg-dim: #6e7a6a;
+  --ui-fg-held: #a64a1f;
+  --ui-shadow: 0 4px 18px rgba(20, 30, 18, 0.18);
+  --ui-radius: 12px;
+  --ui-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+#ui-minimap {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: 180px;
+  height: 180px;
+  background: var(--ui-bg);
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow);
+  pointer-events: none;
+  overflow: hidden;
+  /* Subtle inner border so the minimap reads as a framed window */
+  outline: 1px solid rgba(42, 56, 37, 0.12);
+  outline-offset: -1px;
+}
+
+#ui-minimap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+#ui-controls {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  background: var(--ui-bg-deep);
+  color: var(--ui-fg);
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow);
+  padding: 12px 14px;
+  font: 13px/1.5 var(--ui-mono);
+  pointer-events: none;
+  user-select: none;
+  transition: opacity 0.18s ease;
+}
+
+#ui-controls.hidden {
+  opacity: 0;
+}
+
+#ui-controls .row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+#ui-controls .row + .row {
+  margin-top: 4px;
+}
+
+#ui-controls .keys {
+  display: inline-flex;
+  gap: 3px;
+  min-width: 92px;
+}
+
+#ui-controls .key {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 5px;
+  text-align: center;
+  font-weight: 600;
+  color: var(--ui-fg);
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(42, 56, 37, 0.22);
+  border-radius: 4px;
+  transition: background 0.08s ease, color 0.08s ease, border-color 0.08s ease;
+}
+
+#ui-controls .key.held {
+  color: #fff;
+  background: var(--ui-fg-held);
+  border-color: var(--ui-fg-held);
+}
+
+#ui-controls .label {
+  color: var(--ui-fg-dim);
+}
+
+/* Tiny hint at the bottom — clarifies the toggle key */
+#ui-controls .hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--ui-fg-dim);
+  border-top: 1px dashed rgba(42, 56, 37, 0.18);
+  padding-top: 6px;
+}
