@@ -50,7 +50,7 @@ const SETTLE_MS = Number(process.env.SNAP_SETTLE_MS ?? 1500);
       return w.__beaver?.testPickUpNearestLog?.();
     });
     await page.waitForTimeout(800);
-  } else if (scenario === "fell-tree" || scenario === "fell-tree-overview") {
+  } else if (scenario === "fell-tree" || scenario === "fell-tree-overview" || scenario === "fell-tree-closeup") {
     const target = await page.evaluate(() => {
       const w = window as unknown as { __beaver?: { testFellNearestTree?: () => unknown } };
       return w.__beaver?.testFellNearestTree?.() as { tree: number[] } | null;
@@ -61,6 +61,13 @@ const SETTLE_MS = Number(process.env.SNAP_SETTLE_MS ?? 1500);
       await page.evaluate((t: number[]) => {
         const w = window as unknown as { __beaver?: { setOverviewCamera?: (xz: { x: number; z: number }) => void } };
         w.__beaver?.setOverviewCamera?.({ x: t[0]!, z: t[2]! });
+      }, target.tree);
+      await page.waitForTimeout(500);
+    }
+    if (scenario === "fell-tree-closeup" && target) {
+      await page.evaluate((t: number[]) => {
+        const w = window as unknown as { __beaver?: { setCloseupCamera?: (t: number[]) => void } };
+        w.__beaver?.setCloseupCamera?.(t);
       }, target.tree);
       await page.waitForTimeout(500);
     }
@@ -98,6 +105,8 @@ const SETTLE_MS = Number(process.env.SNAP_SETTLE_MS ?? 1500);
       })(),
       logCount: w.__beaver?.felling?.logs?.length ?? 0,
       logStatuses: (w.__beaver?.felling?.logs ?? []).map((l: any) => l.status),
+      stumpCount: w.__beaver?.felling?.stumps?.length ?? 0,
+      colliderCount: w.__beaver?.world?.colliders?.list?.()?.length ?? 0,
       carriedLog: w.__beaver?.hauling?.carriedLog ? "yes" : "no",
       speedMultiplier: w.__beaver?.hauling?.speedMultiplier ?? null,
       damLogCount: w.__beaver?.damming?.damLogs?.length ?? 0,

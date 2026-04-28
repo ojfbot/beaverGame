@@ -30,10 +30,12 @@ export interface PlayerInputState {
   left: boolean;
   right: boolean;
   sprint: boolean;
-  // Edge-triggered "interact" — the player handler exposes a queue that other
-  // systems (felling, hauling, damming) drain on each frame. Keeps inputs
-  // out of cross-cutting state.
+  // Edge-triggered "interact" — fires once per E keydown. Used by hauling
+  // (pickup/drop) and damming (drop-at-site). Drained by the consumer.
   interactQueued: boolean;
+  // Held E — true while E is currently down. Used by felling for continuous
+  // gnaw progress (so the player isn't required to hammer the key).
+  interactHeld: boolean;
 }
 
 function createInputBinding(state: PlayerInputState): { destroy(): void } {
@@ -55,8 +57,10 @@ function createInputBinding(state: PlayerInputState): { destroy(): void } {
       case "ShiftRight":
         state.sprint = down; break;
       case "KeyE":
-        // Edge-trigger: only flag on keydown, not held.
+        // Edge-trigger interactQueued on keydown (for pickup/drop), AND
+        // continuously update interactHeld (for gnawing).
         if (down) state.interactQueued = true;
+        state.interactHeld = down;
         break;
     }
   };
@@ -91,7 +95,7 @@ export async function spawnPlayer(scene: THREE.Scene, opts: PlayerOpts): Promise
 
   const state: PlayerInputState = {
     forward: false, backward: false, left: false, right: false, sprint: false,
-    interactQueued: false,
+    interactQueued: false, interactHeld: false,
   };
   const input = createInputBinding(state);
 
