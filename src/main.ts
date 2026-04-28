@@ -18,7 +18,10 @@ applyHdriEnvironment(scene, "/assets/hdri/dawn-meadow.hdr").catch(() => {});
 
 (async () => {
   const world = await composeWorld(scene.scene);
-  const player = await spawnPlayer(scene.scene, { terrain: world.terrain });
+  const player = await spawnPlayer(scene.scene, {
+    terrain: world.terrain,
+    colliders: world.colliders,
+  });
   const felling = createFellingSystem(scene.scene, world.treeStates);
 
   const damming = createDammingSystem({
