@@ -5,7 +5,10 @@ import type { Terrain } from "./terrain";
 import type { ColliderRegistry } from "./collision";
 
 const PICKUP_RANGE = 1.2;       // how close to a log to pick it up
-const CARRY_OFFSET_LOCAL = new THREE.Vector3(0, 0.45, -0.55); // hip-height, behind beaver's head
+// Carry over the beaver's centre at chest/back height. The cylinder is laid
+// perpendicular to facing, so its half-length protrudes past the silhouette
+// on each side — visible from a third-person camera behind the beaver.
+const CARRY_OFFSET_LOCAL = new THREE.Vector3(0, 0.55, 0);
 const CARRY_BOB_AMP = 0.025;
 const LAND_SPEED_MULT = 0.7;    // slower while carrying on land
 const WATER_SPEED_MULT = 1.4;   // faster while in water — "water as highway"
