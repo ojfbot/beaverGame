@@ -38,6 +38,7 @@ applyHdriEnvironment(scene, "/assets/hdri/dawn-meadow.hdr").catch(() => {});
   const hauling = createHaulingSystem({
     terrain: world.terrain,
     getWaterLevel: () => damming.waterLevel,
+    colliders: world.colliders,
   });
 
   // UI overlays — minimap top-right, controls bottom-left. Built after all
