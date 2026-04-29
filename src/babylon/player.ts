@@ -7,6 +7,7 @@ import "@babylonjs/loaders/glTF";
 import type { Terrain } from "./terrain";
 import type { ColliderRegistry } from "./collision";
 import { applySoftBound } from "./bounds";
+import { enforceVertexColorMaterials } from "./materials";
 
 const PLAYER_RADIUS = 0.30;
 const WALK_SPEED = 2.4;
@@ -78,6 +79,7 @@ function createInputBinding(state: PlayerInputState): { destroy(): void } {
 
 export async function spawnPlayer(scene: Scene, opts: PlayerOpts): Promise<PlayerHandles> {
   const result = await SceneLoader.ImportMeshAsync("", "/assets/", "beaver_basic_v1.glb", scene);
+  enforceVertexColorMaterials(result.meshes);
   // glTF loader returns a __root__ wrapper at meshes[0]; reuse it as the
   // player's transform root.
   const root = result.meshes[0] as TransformNode;
