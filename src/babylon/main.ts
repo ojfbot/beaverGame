@@ -2,6 +2,7 @@ import { BabylonScene } from "./scene";
 import { loadWorld } from "./world";
 import { spawnPlayer } from "./player";
 import { tryConnectFoundry, callFoundryTool } from "./foundry-client";
+import { createUI } from "./ui";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement | null;
 if (!canvas) throw new Error("missing #game canvas");
@@ -17,8 +18,15 @@ sb.start();
     colliders: world.colliders,
   });
 
+  const ui = createUI({
+    terrain: world.terrain,
+    player,
+    treePositions: world.treePositions,
+  });
+
   sb.setTick((dt) => {
     player.update(dt);
+    ui.update();
   });
 
   // Best-effort connect to asset-foundry MCP (ADR-0010 HTTP+SSE on :3036).
@@ -30,10 +38,15 @@ sb.start();
       sb,
       world,
       player,
+      ui,
       foundry,
       callFoundryTool,
     };
   }
+
+  window.addEventListener("beforeunload", () => {
+    ui.destroy();
+  });
 
   window.addEventListener("beforeunload", () => {
     player.destroy();

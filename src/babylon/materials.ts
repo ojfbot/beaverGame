@@ -1,37 +1,36 @@
 import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Scene } from "@babylonjs/core/scene";
 
 // Babylon analog of src/scene/materials.ts. Asset-foundry .glbs ship
-// KHR_materials_unlit + linear vertex colors; Babylon's glTF loader installs
-// a PBRMaterial which renders pure white because the unlit/vertex-color
-// pipeline isn't wired the way Three.js's MeshBasicMaterial(vertexColors:true)
-// does it. Walk the mesh tree, find anything with a COLOR_0 attribute, and
-// replace its material with an unlit StandardMaterial that respects vertex
-// colors.
+// KHR_materials_unlit + linear vertex colors (per asset-foundry/_lib.py).
+// Babylon's glTF loader installs PBRMaterials that don't pipe vertex colors
+// into output the way Three.js's MeshBasicMaterial(vertexColors:true) does.
+//
+// Using PBRMaterial.unlit=true is the documented Babylon path for
+// "no lighting, vertex colors multiply albedo." Output formula:
+//   color = albedoColor * vertexColor.rgb (+ emissive)
+// Tried StandardMaterial(disableLighting=true) first — that path zeros the
+// diffuse contribution and renders pure black. PBRMaterial.unlit handles it
+// correctly.
 
-let cachedMaterial: { mat: StandardMaterial; opaque: boolean }[] = [];
+const cached: { mat: PBRMaterial; opaque: boolean }[] = [];
 
-function getOrCreateMaterial(scene: Scene, opaque: boolean): StandardMaterial {
-  const found = cachedMaterial.find((m) => m.opaque === opaque);
+function getOrCreateMaterial(scene: Scene, opaque: boolean): PBRMaterial {
+  const found = cached.find((m) => m.opaque === opaque);
   if (found) return found.mat;
-  const mat = new StandardMaterial(`unlit-vc-${opaque ? "opaque" : "translucent"}`, scene);
-  // Disable Babylon's lighting calc — diffuseColor becomes the unlit base
-  // color, vertex colors multiply against it.
-  mat.disableLighting = true;
-  mat.diffuseColor = new Color3(1, 1, 1);
-  mat.specularColor = new Color3(0, 0, 0);
-  mat.emissiveColor = new Color3(0, 0, 0);
-  mat.useEmissiveAsIllumination = false;
+  const mat = new PBRMaterial(`unlit-vc-${opaque ? "opaque" : "translucent"}`, scene);
+  mat.unlit = true;
+  mat.albedoColor = new Color3(1, 1, 1);
+  mat.backFaceCulling = false;
   if (!opaque) {
     mat.alpha = 0.55;
-    mat.alphaMode = 1; // ALPHA_COMBINE
+    mat.transparencyMode = PBRMaterial.MATERIAL_ALPHABLEND;
   }
-  mat.backFaceCulling = false;
-  cachedMaterial.push({ mat, opaque });
+  cached.push({ mat, opaque });
   return mat;
 }
 
@@ -41,12 +40,15 @@ export function enforceVertexColorMaterials(
 ): void {
   for (const node of meshes) {
     if (!(node instanceof Mesh)) continue;
-    const hasColor = !!node.getVerticesDataKinds?.()?.includes(VertexBuffer.ColorKind);
+    const kinds = node.getVerticesDataKinds?.() ?? [];
+    const hasColor = kinds.includes(VertexBuffer.ColorKind);
     if (!hasColor) continue;
     const scene = node.getScene();
     node.material = getOrCreateMaterial(scene, !opts.translucent);
-    // Ensure the renderer actually multiplies by vertex colors.
     node.useVertexColors = true;
-    node.hasVertexAlpha = true;
+    // Don't force hasVertexAlpha — let Babylon infer from the buffer. asset-
+    // foundry COLOR_0 is RGB (no alpha channel) so forcing vertex alpha
+    // produced the previous black-render bug when reading 0 from a missing
+    // alpha component.
   }
 }
