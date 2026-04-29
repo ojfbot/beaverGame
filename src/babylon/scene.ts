@@ -30,20 +30,28 @@ export class BabylonScene {
     // ArcRotateCamera with lockedTarget = beaver (set in player.ts after the
     // beaver loads). Touchpad/mouse drag orbits; wheel zooms. Keys do not
     // affect the camera at all — they're owned by player.ts for the beaver.
+    // Match the legacy Three.js POV: camera at offset (0, 2.4, 4.5) from
+    // beaver target (0, 0.7, 0) → height 1.7 above target at horizontal
+    // distance 4.5 → angle ~21° below horizontal. ArcRotate equivalents:
+    //   alpha = π/2 puts camera on +Z axis (beaver faces -Z, so this is
+    //     "behind" the beaver at spawn).
+    //   beta = π/2.35 ≈ 76.6° from +Y up = 13.4° below horizontal.
+    //   radius = sqrt(4.5² + 1.7²) ≈ 4.81.
     this.camera = new ArcRotateCamera(
       "camera",
-      -Math.PI / 2,    // alpha — start behind the world's -Z origin
-      Math.PI / 3.2,   // beta — slight downward look
-      6.5,             // radius — distance from target
+      Math.PI / 2,
+      Math.PI / 2.35,
+      4.8,
       new Vector3(0, 0.7, 0),
       this.scene,
     );
     this.camera.fov = (50 * Math.PI) / 180;
     this.camera.minZ = 0.1;
     this.camera.maxZ = 200;
-    this.camera.lowerRadiusLimit = 4;
-    this.camera.upperRadiusLimit = 18;
-    this.camera.upperBetaLimit = Math.PI / 2.05;  // prevent flipping under terrain
+    this.camera.lowerRadiusLimit = 3;
+    this.camera.upperRadiusLimit = 14;
+    this.camera.lowerBetaLimit = Math.PI / 6;       // don't go directly above
+    this.camera.upperBetaLimit = Math.PI / 2.05;    // prevent flipping under terrain
     this.camera.wheelDeltaPercentage = 0.01;
     this.camera.attachControl(canvas, true);
 
