@@ -1,5 +1,6 @@
 import { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Space } from "@babylonjs/core/Maths/math.axis";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
@@ -98,13 +99,25 @@ export async function spawnPlayer(scene: Scene, opts: PlayerOpts): Promise<Playe
   };
   const input = createInputBinding(state);
 
-  // Beaver yaw=0 faces -Z (Blender +Y → glTF -Z).
+  // Babylon's glTF loader sets root.rotationQuaternion (encoding the
+  // +Y → -Z Blender → glTF spec flip). When the quaternion is non-null,
+  // Babylon ignores root.rotation Euler values for rendering. So we rotate
+  // via root.rotate() (representation-agnostic API) and track yaw in a
+  // closure variable for camera coupling + the forward() vector.
+  let yaw = 0;
+
+  // Beaver yaw=0 (closure value) corresponds to the spawn facing (-Z per
+  // glTF base orientation). forward() reads the closure yaw, not root.rotation.
   const forward = (): Vector3 =>
-    new Vector3(-Math.sin(root.rotation.y), 0, -Math.cos(root.rotation.y));
+    new Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
 
   function update(dt: number): void {
     const turn = (state.left ? 1 : 0) - (state.right ? 1 : 0);
-    root.rotation.y += turn * TURN_SPEED * dt;
+    if (turn !== 0) {
+      const dYaw = turn * TURN_SPEED * dt;
+      yaw += dYaw;
+      root.rotate(Vector3.Up(), dYaw, Space.LOCAL);
+    }
 
     const move = (state.forward ? 1 : 0) - (state.backward ? 1 : 0);
     if (move !== 0) {
@@ -131,11 +144,9 @@ export async function spawnPlayer(scene: Scene, opts: PlayerOpts): Promise<Playe
     root.position.y = ground + bob;
 
     // Yaw-lock the camera to the beaver — legacy Three.js behavior. Camera
-    // alpha tracks beaver rotation so "behind beaver" stays behind. Touchpad
-    // still controls beta (pitch) and radius (zoom), but alpha snaps each
-    // frame to the beaver's facing. Restores the "world rotates around
-    // beaver" feel users get from the legacy build.
-    opts.camera.alpha = root.rotation.y + Math.PI / 2;
+    // alpha tracks the closure yaw (NOT root.rotation.y, which is stale when
+    // a rotationQuaternion is set) so "behind beaver" stays behind.
+    opts.camera.alpha = yaw + Math.PI / 2;
   }
 
   const handles: PlayerHandles = {

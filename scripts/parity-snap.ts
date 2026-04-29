@@ -23,7 +23,18 @@ const SETTLE_MS = 1800;
 
 type Snapshot = {
   label: string;
-  beaver: { x: number; y: number; z: number; yawDeg: number } | null;
+  beaver: {
+    x: number;
+    y: number;
+    z: number;
+    yawDeg: number;
+    // Effective world-rotation Y derived from the world matrix —
+    // catches the bug where Babylon's glTF __root__ has a non-null
+    // rotationQuaternion that overrides Euler rotation.
+    effectiveYawDeg: number | null;
+    // The quaternion if Babylon set one (non-null → root.rotation is ignored).
+    rotationQuaternion: { x: number; y: number; z: number; w: number } | null;
+  } | null;
   imagePath: string;
   console: string[];
 };
@@ -38,18 +49,45 @@ async function readBeaver(page: Page, engine: "three" | "babylon"): Promise<Snap
   return page.evaluate((e) => {
     const w = window as unknown as {
       __beaver?: { player?: { position: { x: number; y: number; z: number }; group?: { rotation: { y: number } } } };
-      __beaverBabylon?: { player?: { position: { x: number; y: number; z: number }; root?: { rotation: { y: number } } } };
+      __beaverBabylon?: { player?: { position: { x: number; y: number; z: number }; root?: any } };
     };
     if (e === "three") {
       const p = w.__beaver?.player;
       if (!p?.position) return null;
       const yaw = p.group?.rotation.y ?? 0;
-      return { x: p.position.x, y: p.position.y, z: p.position.z, yawDeg: (yaw * 180) / Math.PI };
+      return {
+        x: p.position.x,
+        y: p.position.y,
+        z: p.position.z,
+        yawDeg: (yaw * 180) / Math.PI,
+        effectiveYawDeg: (yaw * 180) / Math.PI,
+        rotationQuaternion: null,
+      };
     }
     const p = w.__beaverBabylon?.player;
     if (!p?.position) return null;
-    const yaw = p.root?.rotation.y ?? 0;
-    return { x: p.position.x, y: p.position.y, z: p.position.z, yawDeg: (yaw * 180) / Math.PI };
+    const root = p.root;
+    const yaw = root?.rotation?.y ?? 0;
+    // World matrix: forward vector tells us the effective yaw.
+    let effectiveYawDeg: number | null = null;
+    if (root?.computeWorldMatrix) {
+      root.computeWorldMatrix(true);
+      const wm = root.getWorldMatrix();
+      // Local -Z transformed to world tells us where "forward" points.
+      const fx = -wm.m[8];
+      const fz = -wm.m[10];
+      const eff = Math.atan2(fx, fz);
+      effectiveYawDeg = (eff * 180) / Math.PI;
+    }
+    const q = root?.rotationQuaternion;
+    return {
+      x: p.position.x,
+      y: p.position.y,
+      z: p.position.z,
+      yawDeg: (yaw * 180) / Math.PI,
+      effectiveYawDeg,
+      rotationQuaternion: q ? { x: q.x, y: q.y, z: q.z, w: q.w } : null,
+    };
   }, engine);
 }
 
@@ -89,7 +127,9 @@ async function snapEngine(engine: "three" | "babylon"): Promise<Run> {
       imagePath: `${engine}-${label}.png`,
       console: [...consoleLines],
     });
-    console.log(`  [${label}] beaver = ${beaver ? `(${beaver.x.toFixed(2)}, ${beaver.y.toFixed(2)}, ${beaver.z.toFixed(2)}) yaw=${beaver.yawDeg.toFixed(1)}°` : "null"}`);
+    const eff = beaver?.effectiveYawDeg != null ? `effYaw=${beaver.effectiveYawDeg.toFixed(1)}°` : "";
+    const quat = beaver?.rotationQuaternion ? ` quat=non-null` : "";
+    console.log(`  [${label}] beaver = ${beaver ? `(${beaver.x.toFixed(2)}, ${beaver.y.toFixed(2)}, ${beaver.z.toFixed(2)}) yaw=${beaver.yawDeg.toFixed(1)}° ${eff}${quat}` : "null"}`);
   }
 
   await takeSnap("00-spawn");
