@@ -61,9 +61,15 @@ async function importGlb(scene: Scene, file: string): Promise<ISceneLoaderAsyncR
 export async function loadWorld(scene: Scene): Promise<LoadedWorld> {
   const terrain = new Terrain(scene, TERRAIN_OPTS);
 
-  // Sky dome — atmospheric backdrop. The legacy code adds it to the scene
-  // directly; the GLTF loader does the same.
+  // Sky dome — atmospheric backdrop. Render at infinity so it always sits
+  // behind everything else and isn't fog-affected. The dome's vertex
+  // colors stay (no override), but applyFog is disabled so the green
+  // distance fog doesn't blend with the sky and erase its gradient.
   const sky = await importGlb(scene, "sky_dome_v1.glb");
+  for (const m of sky.meshes) {
+    m.infiniteDistance = true;
+    m.applyFog = false;
+  }
 
   // Birch sapling — load once, clone per tree. meshes[0] is the glTF
   // __root__ TransformNode; meshes[1+] are the actual geometry that needs
