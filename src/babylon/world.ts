@@ -29,6 +29,7 @@ export type LoadedWorld = {
   ground: ISceneLoaderAsyncResult;
   water: ISceneLoaderAsyncResult;
   trees: ISceneLoaderAsyncResult[];
+  treePositions: { x: number; z: number }[];
 };
 
 async function importGlb(
@@ -71,5 +72,6 @@ export async function loadWorld(scene: Scene): Promise<LoadedWorld> {
     trees.push(tree);
   }
 
-  return { terrain, colliders, sky, ground, water, trees };
+  const treePositions = SAPLING_POSITIONS.map((p) => ({ x: p.x, z: p.z }));
+  return { terrain, colliders, sky, ground, water, trees, treePositions };
 }
