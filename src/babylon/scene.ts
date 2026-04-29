@@ -57,6 +57,11 @@ export class BabylonScene {
     this.camera.upperBetaLimit = Math.PI / 2.05;    // prevent flipping under terrain
     this.camera.wheelDeltaPercentage = 0.01;
     this.camera.attachControl(canvas, true);
+    // Remove the camera's keyboard input — Babylon's ArcRotateCamera by
+    // default binds arrow keys to keysLeft/Right/Up/Down for orbit, which
+    // races with player.ts's beaver-turn handler. Keys are reserved for the
+    // beaver; touchpad/mouse drag + scroll-wheel still orbit the camera.
+    this.camera.inputs.removeByType("ArcRotateCameraKeyboardMoveInput");
 
     // Hemispheric light — legacy Three.js was THREE.HemisphereLight(0xffe9c2, 0x4d6a3a, 0.55).
     // Sky colour warms ambient; ground colour adds a mossy bounce.
