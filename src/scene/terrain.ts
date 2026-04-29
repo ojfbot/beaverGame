@@ -212,20 +212,29 @@ export class Terrain {
     return -this.size / 2 + (iy / this.segments) * this.size;
   }
 
-  // Bilinear sample of the heightfield at world XZ.
+  // Sample the heightfield on the actual triangle the point lies in, matching
+  // THREE.PlaneGeometry's per-cell triangulation. Using a bilinear blend here
+  // pulls the player below the visible flat-shaded surface in concave cells
+  // (the dug-out areas) — barycentric on the same diagonal Three.js
+  // tessellates with keeps the player on the visible plane.
   heightAt(x: number, z: number): number {
     const fx = this.worldToGridX(x);
     const fz = this.worldToGridZ(z);
     const N = this.segments + 1;
     const ix = THREE.MathUtils.clamp(Math.floor(fx), 0, this.segments - 1);
     const iz = THREE.MathUtils.clamp(Math.floor(fz), 0, this.segments - 1);
-    const tx = fx - ix;
-    const tz = fz - iz;
-    const a = this.heights[iz * N + ix]!;
-    const b = this.heights[iz * N + ix + 1]!;
-    const c = this.heights[(iz + 1) * N + ix]!;
-    const d = this.heights[(iz + 1) * N + ix + 1]!;
-    return a * (1 - tx) * (1 - tz) + b * tx * (1 - tz) + c * (1 - tx) * tz + d * tx * tz;
+    const tx = THREE.MathUtils.clamp(fx - ix, 0, 1);
+    const tz = THREE.MathUtils.clamp(fz - iz, 0, 1);
+    const a = this.heights[iz * N + ix]!;             // (0,0)
+    const b = this.heights[iz * N + ix + 1]!;         // (1,0)
+    const c = this.heights[(iz + 1) * N + ix]!;       // (0,1)
+    const d = this.heights[(iz + 1) * N + ix + 1]!;   // (1,1)
+    // PlaneGeometry splits each cell along the b→c diagonal (tx + tz = 1).
+    // T1 (a,b,c) covers tx + tz < 1; T2 (b,c,d) covers tx + tz ≥ 1.
+    if (tx + tz < 1) {
+      return a + (b - a) * tx + (c - a) * tz;
+    }
+    return d + (c - d) * (1 - tx) + (b - d) * (1 - tz);
   }
 
   // Approximate slope (rad) at world XZ via central differences.
