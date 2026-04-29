@@ -2,35 +2,65 @@ import { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { SceneLoader, ISceneLoaderAsyncResult } from "@babylonjs/core/Loading/sceneLoader";
 import "@babylonjs/loaders/glTF";
+import { Terrain } from "./terrain";
+import { ColliderRegistry, createColliderRegistry } from "./collision";
 
 const ASSET_BASE = "/assets/";
 
-type AssetSpec = { id: string; file: string; position?: Vector3 };
+// Terrain config — same as Three.js scene/world.ts (40m square, 64 segments,
+// seed 1, 2.4 amplitude). Keeps gameplay parity for the test rigs.
+const TERRAIN_OPTS = { size: 40, segments: 64, seed: 1, amplitude: 2.4 };
 
-const ASSETS: AssetSpec[] = [
-  { id: "sky_dome", file: "sky_dome_v1.glb", position: new Vector3(0, 0, 0) },
-  { id: "ground_pond_meadow", file: "ground_pond_meadow_v1.glb", position: new Vector3(0, 0, 0) },
-  { id: "water_pond", file: "water_pond_v1.glb", position: new Vector3(0, 0, 0) },
-  { id: "beaver_basic", file: "beaver_basic_v1.glb", position: new Vector3(0, 0, 0) },
-  // Place a single birch sapling near origin for now; world.ts will scatter
-  // many once terrain heightAt is ported.
-  { id: "birch_sapling", file: "birch_sapling_v1.glb", position: new Vector3(2.5, 0, -1.5) },
+// Sapling positions reused from src/scene/world.ts scatter (truncated to 5 for
+// Sprint 1; full scatter ports in Sprint 2 when felling.ts lands).
+const SAPLING_POSITIONS = [
+  { x: 2.5, z: -1.5 },
+  { x: -3.0, z: 2.0 },
+  { x: 4.5, z: 3.5 },
+  { x: -5.5, z: -3.5 },
+  { x: 1.5, z: 6.0 },
 ];
 
 export type LoadedWorld = {
-  meshes: Record<string, ISceneLoaderAsyncResult>;
+  terrain: Terrain;
+  colliders: ColliderRegistry;
+  sky: ISceneLoaderAsyncResult;
+  ground: ISceneLoaderAsyncResult;
+  water: ISceneLoaderAsyncResult;
+  trees: ISceneLoaderAsyncResult[];
 };
 
-export async function loadWorld(scene: Scene): Promise<LoadedWorld> {
-  const meshes: Record<string, ISceneLoaderAsyncResult> = {};
+async function importGlb(scene: Scene, file: string, position?: Vector3): Promise<ISceneLoaderAsyncResult> {
+  const result = await SceneLoader.ImportMeshAsync("", ASSET_BASE, file, scene);
+  if (position && result.meshes[0]) {
+    result.meshes[0].position.copyFrom(position);
+  }
+  return result;
+}
 
-  for (const asset of ASSETS) {
-    const result = await SceneLoader.ImportMeshAsync("", ASSET_BASE, asset.file, scene);
-    if (asset.position && result.meshes[0]) {
-      result.meshes[0].position.copyFrom(asset.position);
-    }
-    meshes[asset.id] = result;
+export async function loadWorld(scene: Scene): Promise<LoadedWorld> {
+  // Procedural terrain first (deterministic, no I/O).
+  const terrain = new Terrain(scene, TERRAIN_OPTS);
+
+  // Sky and ground/water layered on top of the procedural terrain. The
+  // ground_pond_meadow asset is decorative — the actual ground geometry is
+  // the procedural mesh.
+  const sky = await importGlb(scene, "sky_dome_v1.glb");
+  const ground = await importGlb(scene, "ground_pond_meadow_v1.glb");
+  const water = await importGlb(scene, "water_pond_v1.glb");
+
+  // Trees scattered at fixed positions; collider radius matches Three.js
+  // src/scene/world.ts (0.18 trunk radius). Full scatter + standing/fallen
+  // state lands in Sprint 2 alongside felling.ts.
+  const colliders = createColliderRegistry();
+  const trees: ISceneLoaderAsyncResult[] = [];
+  for (let i = 0; i < SAPLING_POSITIONS.length; i++) {
+    const p = SAPLING_POSITIONS[i]!;
+    const y = terrain.heightAt(p.x, p.z);
+    const tree = await importGlb(scene, "birch_sapling_v1.glb", new Vector3(p.x, y, p.z));
+    colliders.add({ id: `tree-${i}`, cx: p.x, cz: p.z, radius: 0.18 });
+    trees.push(tree);
   }
 
-  return { meshes };
+  return { terrain, colliders, sky, ground, water, trees };
 }
