@@ -1,6 +1,7 @@
 import { BabylonScene } from "./scene";
 import { loadWorld } from "./world";
 import { spawnPlayer } from "./player";
+import { tryConnectFoundry, callFoundryTool } from "./foundry-client";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement | null;
 if (!canvas) throw new Error("missing #game canvas");
@@ -20,11 +21,17 @@ sb.start();
     player.update(dt);
   });
 
+  // Best-effort connect to asset-foundry MCP (ADR-0010 HTTP+SSE on :3036).
+  // Game runs whether or not the foundry is reachable.
+  const foundry = import.meta.env.DEV ? await tryConnectFoundry() : { connected: false };
+
   if (import.meta.env.DEV) {
     (window as unknown as { __beaverBabylon: unknown }).__beaverBabylon = {
       sb,
       world,
       player,
+      foundry,
+      callFoundryTool,
     };
   }
 
