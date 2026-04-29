@@ -16,11 +16,24 @@ export interface TerrainOpts {
   amplitude: number;
 }
 
-const GRASS_DARK = new Color3(0.196, 0.298, 0.169); // #324c2b
-const GRASS_MID = new Color3(0.239, 0.478, 0.239); // #3d7a3d
-const GRASS_LIGHT = new Color3(0.525, 0.659, 0.380); // #86a861
-const DIRT = new Color3(0.478, 0.353, 0.227); // #7a5a3a
-const CREEK_BED = new Color3(0.365, 0.435, 0.329); // #5d6f54
+// Palette ported from src/scene/terrain.ts. Three.js (with outputColorSpace
+// = SRGBColorSpace) treats hex literals as sRGB and converts to linear under
+// the hood. Babylon expects color values in linear space; if we hand it the
+// raw hex-decoded sRGB numbers the result reads way too bright. So we
+// pre-convert sRGB → linear here, matching what Three.js does internally.
+function srgb(r8: number, g8: number, b8: number): Color3 {
+  const toLinear = (c8: number): number => {
+    const c = c8 / 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return new Color3(toLinear(r8), toLinear(g8), toLinear(b8));
+}
+
+const GRASS_DARK = srgb(0x32, 0x4c, 0x2b);
+const GRASS_MID = srgb(0x3d, 0x7a, 0x3d);
+const GRASS_LIGHT = srgb(0x86, 0xa8, 0x61);
+const DIRT = srgb(0x7a, 0x5a, 0x3a);
+const CREEK_BED = srgb(0x5d, 0x6f, 0x54);
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -168,8 +181,11 @@ export class Terrain {
         const b = a + 1;
         const c = a + N;
         const d = c + 1;
-        // Two triangles per quad. Wind so the up-normal points +Y.
-        indices.push(a, c, b, b, c, d);
+        // Two triangles per quad. Babylon defaults to ClockWise winding for
+        // front-facing — wind so the visible top of the terrain faces +Y up.
+        // (Previously CCW which got back-face culled and made terrain invisible
+        // from above.)
+        indices.push(a, b, c, b, d, c);
       }
     }
 

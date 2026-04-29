@@ -1,7 +1,6 @@
 import { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { SceneLoader, ISceneLoaderAsyncResult } from "@babylonjs/core/Loading/sceneLoader";
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import "@babylonjs/loaders/glTF";
 import { Terrain } from "./terrain";
@@ -106,29 +105,20 @@ export async function loadWorld(scene: Scene): Promise<LoadedWorld> {
     if (tooClose) continue;
     placed.push({ x, y, z });
 
-    // Clone the loaded sapling. Cloning the root TransformNode + descendants
-    // gives us a fresh hierarchy we can position independently.
+    // Use instantiateHierarchy — Babylon's recommended path for duplicating
+    // glTF mesh hierarchies. Creates per-mesh instances (shared geometry,
+    // independent transforms) and clones the TransformNode tree. Faster +
+    // more reliable than .clone() which has incomplete deep-clone semantics
+    // for glTF __root__ + descendants.
     const id = `tree-${trees.length}`;
-    const clone = saplingRoot.clone(id, null) as TransformNode | null;
-    if (!clone) {
-      // Defensive — Babylon's clone has been observed to return null in
-      // edge cases (older Mesh subclasses without proper clone support).
-      // Skip the slot rather than crash; we have rejection-sampling slack.
-      continue;
-    }
+    const clone = saplingRoot.instantiateHierarchy(null) as TransformNode | null;
+    if (!clone) continue;
+    clone.name = id;
     clone.setEnabled(true);
     clone.position.set(x, y, z);
     clone.rotation.y = rng() * Math.PI * 2;
     const scale = TREE_SCALE_MIN + rng() * TREE_SCALE_RANGE;
     clone.scaling.set(scale, scale, scale);
-
-    // Re-apply material enforcement on the clone's descendants. Materials
-    // are shared by reference but useVertexColors is a per-mesh flag.
-    const cloneDescendants: Mesh[] = [];
-    clone.getChildMeshes().forEach((m) => {
-      if (m instanceof Mesh) cloneDescendants.push(m);
-    });
-    enforceVertexColorMaterials(cloneDescendants);
 
     trees.push({ id, root: clone, position: { x, y, z }, scale, yaw: clone.rotation.y });
     treePositions.push({ x, z });
