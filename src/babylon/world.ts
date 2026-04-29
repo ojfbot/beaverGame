@@ -1,5 +1,6 @@
 import { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Space } from "@babylonjs/core/Maths/math.axis";
 import { SceneLoader, ISceneLoaderAsyncResult } from "@babylonjs/core/Loading/sceneLoader";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import "@babylonjs/loaders/glTF";
@@ -122,11 +123,15 @@ export async function loadWorld(scene: Scene): Promise<LoadedWorld> {
     clone.name = id;
     clone.setEnabled(true);
     clone.position.set(x, y, z);
-    clone.rotation.y = rng() * Math.PI * 2;
+    // Use rotate() instead of rotation.y assignment — Babylon's glTF loader
+    // sets rotationQuaternion on the __root__ which makes the Euler property
+    // a no-op. rotate() is representation-agnostic.
+    const treeYaw = rng() * Math.PI * 2;
+    clone.rotate(Vector3.Up(), treeYaw, Space.LOCAL);
     const scale = TREE_SCALE_MIN + rng() * TREE_SCALE_RANGE;
     clone.scaling.set(scale, scale, scale);
 
-    trees.push({ id, root: clone, position: { x, y, z }, scale, yaw: clone.rotation.y });
+    trees.push({ id, root: clone, position: { x, y, z }, scale, yaw: treeYaw });
     treePositions.push({ x, z });
     colliders.add({ id, cx: x, cz: z, radius: 0.18 * scale });
   }
