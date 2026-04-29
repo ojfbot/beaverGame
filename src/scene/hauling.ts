@@ -79,8 +79,11 @@ export function createHaulingSystem(opts: HaulingOpts): HaulingHandles {
           const target = player.position.clone().add(offset);
           target.y += Math.sin(performance.now() * 0.008) * CARRY_BOB_AMP;
           handles.carriedLog.mesh.position.lerp(target, Math.min(1, dt * 12));
-          // Log axis stays horizontal, perpendicular to player facing
-          handles.carriedLog.mesh.rotation.y = player.group.rotation.y + Math.PI / 2;
+          // Long axis perpendicular to facing (sticks out of the beaver's
+          // sides). rotation.z = π/2 lays the cylinder along world-X; Ry by
+          // the player's yaw spins that into beaver-local-X. Adding +π/2
+          // would put it along forward — that's the bug we just fixed.
+          handles.carriedLog.mesh.rotation.y = player.group.rotation.y;
           handles.carriedLog.mesh.rotation.z = Math.PI / 2;
         }
       } else if (interact) {
