@@ -129,6 +129,13 @@ export async function spawnPlayer(scene: Scene, opts: PlayerOpts): Promise<Playe
     const ground = opts.terrain.heightAt(root.position.x, root.position.z);
     const bob = move !== 0 ? Math.abs(Math.sin(performance.now() * 0.012)) * 0.04 : 0;
     root.position.y = ground + bob;
+
+    // Yaw-lock the camera to the beaver — legacy Three.js behavior. Camera
+    // alpha tracks beaver rotation so "behind beaver" stays behind. Touchpad
+    // still controls beta (pitch) and radius (zoom), but alpha snaps each
+    // frame to the beaver's facing. Restores the "world rotates around
+    // beaver" feel users get from the legacy build.
+    opts.camera.alpha = root.rotation.y + Math.PI / 2;
   }
 
   const handles: PlayerHandles = {
