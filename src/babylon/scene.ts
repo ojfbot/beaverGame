@@ -34,13 +34,16 @@ export class BabylonScene {
     // beaver target (0, 0.7, 0) → height 1.7 above target at horizontal
     // distance 4.5 → angle ~21° below horizontal. ArcRotate equivalents:
     //   alpha = π/2 puts camera on +Z axis (beaver faces -Z, so this is
-    //     "behind" the beaver at spawn).
-    //   beta = π/2.35 ≈ 76.6° from +Y up = 13.4° below horizontal.
+    //     "behind" the beaver at spawn). Updated each frame in player.ts
+    //     to track beaver yaw — restores legacy yaw-locked third-person
+    //     follow (A/D rotate the world around the beaver).
+    //   beta = π/2.6 ≈ 69° from +Y up = 21° below horizontal (matches
+    //     legacy 1.7 vertical / 4.5 horizontal offset).
     //   radius = sqrt(4.5² + 1.7²) ≈ 4.81.
     this.camera = new ArcRotateCamera(
       "camera",
       Math.PI / 2,
-      Math.PI / 2.35,
+      Math.PI / 2.6,
       4.8,
       new Vector3(0, 0.7, 0),
       this.scene,
