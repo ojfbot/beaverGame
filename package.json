@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "validate-assets": "tsx scripts/validate-assets.ts"
+    "validate-assets": "tsx scripts/validate-assets.ts",
+    "parity-snap": "tsx scripts/parity-snap.ts"
   },
   "dependencies": {
     "@babylonjs/core": "^9.4.1",
