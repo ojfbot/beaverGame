@@ -1,7 +1,7 @@
 import { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import { UniversalCamera } from "@babylonjs/core/Cameras/universalCamera";
+import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
 import "@babylonjs/loaders/glTF";
 import type { Terrain } from "./terrain";
@@ -36,7 +36,7 @@ export interface PlayerHandles {
 
 export interface PlayerOpts {
   terrain: Terrain;
-  camera: UniversalCamera;
+  camera: ArcRotateCamera;
   colliders?: ColliderRegistry;
   spawnXZ?: { x: number; z: number };
 }
@@ -80,16 +80,17 @@ function createInputBinding(state: PlayerInputState): { destroy(): void } {
 export async function spawnPlayer(scene: Scene, opts: PlayerOpts): Promise<PlayerHandles> {
   const result = await SceneLoader.ImportMeshAsync("", "/assets/", "beaver_basic_v1.glb", scene);
   enforceVertexColorMaterials(result.meshes);
-  // glTF loader returns a __root__ wrapper at meshes[0]; reuse it as the
-  // player's transform root.
   const root = result.meshes[0] as TransformNode;
   if (!root) throw new Error("beaver_basic glTF returned no root mesh");
 
   const spawnX = opts.spawnXZ?.x ?? 0;
   const spawnZ = opts.spawnXZ?.z ?? 4;
   root.position.set(spawnX, opts.terrain.heightAt(spawnX, spawnZ), spawnZ);
-  // glTF loader already accounts for Blender +Y → glTF -Z; matches Three.js
-  // semantics so yaw=0 faces -Z.
+
+  // Camera follows the beaver via lockedTarget. ArcRotateCamera handles
+  // touchpad/mouse orbit + wheel zoom internally; the player code never
+  // touches the camera again.
+  opts.camera.lockedTarget = root;
 
   const state: PlayerInputState = {
     forward: false, backward: false, left: false, right: false, sprint: false,
@@ -97,10 +98,7 @@ export async function spawnPlayer(scene: Scene, opts: PlayerOpts): Promise<Playe
   };
   const input = createInputBinding(state);
 
-  const cameraOffsetLocal = new Vector3(0, 2.4, 4.5);
-  const cameraDesired = new Vector3();
-  const cameraTarget = new Vector3();
-
+  // Beaver yaw=0 faces -Z (Blender +Y → glTF -Z).
   const forward = (): Vector3 =>
     new Vector3(-Math.sin(root.rotation.y), 0, -Math.cos(root.rotation.y));
 
@@ -131,33 +129,6 @@ export async function spawnPlayer(scene: Scene, opts: PlayerOpts): Promise<Playe
     const ground = opts.terrain.heightAt(root.position.x, root.position.z);
     const bob = move !== 0 ? Math.abs(Math.sin(performance.now() * 0.012)) * 0.04 : 0;
     root.position.y = ground + bob;
-
-    // Camera follow with soft lag — manual lerp mirrors the Three.js version.
-    const yaw = root.rotation.y;
-    const offX = cameraOffsetLocal.x * Math.cos(yaw) + cameraOffsetLocal.z * Math.sin(yaw);
-    const offZ = -cameraOffsetLocal.x * Math.sin(yaw) + cameraOffsetLocal.z * Math.cos(yaw);
-    cameraDesired.set(
-      root.position.x + offX,
-      root.position.y + cameraOffsetLocal.y,
-      root.position.z + offZ,
-    );
-    const camGround = opts.terrain.heightAt(cameraDesired.x, cameraDesired.z) + 0.4;
-    if (cameraDesired.y < camGround) cameraDesired.y = camGround;
-
-    const camLerp = Math.min(1, dt * 4.5);
-    opts.camera.position.copyFrom(
-      Vector3.Lerp(opts.camera.position, cameraDesired, camLerp),
-    );
-
-    cameraTarget.set(
-      root.position.x,
-      root.position.y + 0.7,
-      root.position.z,
-    );
-    const targetLerp = Math.min(1, dt * 6);
-    opts.camera.setTarget(
-      Vector3.Lerp(opts.camera.getTarget(), cameraTarget, targetLerp),
-    );
   }
 
   const handles: PlayerHandles = {
