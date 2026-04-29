@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { TreeState } from "./world";
 import type { PlayerHandles } from "./player";
 import type { ColliderRegistry } from "./collision";
-import { spawnLog, type LogEntity } from "./log";
+import { spawnLog, type LogEntity, LOG_COLLIDER_RADIUS } from "./log";
 import { createWoodChips, type ChipsHandles } from "./particles";
 import { spawnStump, type StumpHandles } from "./stump";
 
@@ -161,6 +161,13 @@ export function createFellingSystem(opts: FellingOpts): FellingHandles {
             cx: stumpPos.x,
             cz: stumpPos.z,
             radius: stump.radius,
+          });
+          // Register the freshly-spawned log so the player can't walk through it.
+          colliders.add({
+            id: log.id,
+            cx: log.mesh.position.x,
+            cz: log.mesh.position.z,
+            radius: LOG_COLLIDER_RADIUS,
           });
         }
 

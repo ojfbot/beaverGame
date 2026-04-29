@@ -77,7 +77,12 @@ function logGeometry(): THREE.BufferGeometry {
   return cachedGeom;
 }
 
+// Stable id for the collider registry — one per spawned log, monotonic
+// across the session.
+let nextLogId = 0;
+
 export interface LogEntity {
+  id: string;
   mesh: THREE.Mesh;
   status: "ground" | "carried" | "placed";
   // Where on the ground it landed when felled (or last dropped). Used for
@@ -86,6 +91,12 @@ export interface LogEntity {
   // Spawn-time orientation (yaw radians). Carried logs ride at player yaw.
   yaw: number;
 }
+
+// Cylinder-collider radius for a horizontal 0.9-long, 0.10-radius log.
+// Approximates the log's bounding circle in plan view; over-represents the
+// midline width and under-represents the ends, which is fine for the cozy
+// register (you can't walk through fallen birch).
+export const LOG_COLLIDER_RADIUS = 0.45;
 
 export function spawnLog(scene: THREE.Scene, position: THREE.Vector3, yaw: number): LogEntity {
   const material = new THREE.MeshLambertMaterial({
@@ -101,6 +112,7 @@ export function spawnLog(scene: THREE.Scene, position: THREE.Vector3, yaw: numbe
   scene.add(mesh);
 
   return {
+    id: `log-${nextLogId++}`,
     mesh,
     status: "ground",
     groundedPosition: position.clone(),

@@ -1,7 +1,8 @@
 import * as THREE from "three";
-import type { LogEntity } from "./log";
+import { LOG_COLLIDER_RADIUS, type LogEntity } from "./log";
 import type { PlayerHandles } from "./player";
 import type { Terrain } from "./terrain";
+import type { ColliderRegistry } from "./collision";
 
 const PICKUP_RANGE = 1.2;       // how close to a log to pick it up
 const CARRY_OFFSET_LOCAL = new THREE.Vector3(0, 0.45, -0.55); // hip-height, behind beaver's head
@@ -23,6 +24,9 @@ export interface HaulingOpts {
   // Live water level; M-δ drives this from dam state. M-γ defaults to a
   // very low value (effectively "no water") so the system works in isolation.
   getWaterLevel: () => number;
+  // When provided, ground/dropped logs are registered so the player can't
+  // walk through them; pickup deregisters.
+  colliders?: ColliderRegistry;
 }
 
 export function createHaulingSystem(opts: HaulingOpts): HaulingHandles {
@@ -55,6 +59,13 @@ export function createHaulingSystem(opts: HaulingOpts): HaulingHandles {
           log.mesh.rotation.set(0, player.group.rotation.y, Math.PI / 2);
           log.status = "ground";
           log.groundedPosition = dropPos.clone();
+          // Re-register the collider at the new ground location.
+          opts.colliders?.add({
+            id: log.id,
+            cx: dropPos.x,
+            cz: dropPos.z,
+            radius: LOG_COLLIDER_RADIUS,
+          });
           handles.carriedLog = null;
         } else {
           // Follow the player at hip height behind their head
@@ -83,6 +94,10 @@ export function createHaulingSystem(opts: HaulingOpts): HaulingHandles {
         }
         if (best) {
           best.status = "carried";
+          // Carried logs travel with the player — the collider would chase
+          // the beaver and shove them around. Drop it from the registry until
+          // the log is dropped or placed.
+          opts.colliders?.remove(best.id);
           handles.carriedLog = best;
         }
       }
