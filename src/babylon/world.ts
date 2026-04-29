@@ -4,6 +4,7 @@ import { SceneLoader, ISceneLoaderAsyncResult } from "@babylonjs/core/Loading/sc
 import "@babylonjs/loaders/glTF";
 import { Terrain } from "./terrain";
 import { ColliderRegistry, createColliderRegistry } from "./collision";
+import { enforceVertexColorMaterials } from "./materials";
 
 const ASSET_BASE = "/assets/";
 
@@ -30,11 +31,17 @@ export type LoadedWorld = {
   trees: ISceneLoaderAsyncResult[];
 };
 
-async function importGlb(scene: Scene, file: string, position?: Vector3): Promise<ISceneLoaderAsyncResult> {
+async function importGlb(
+  scene: Scene,
+  file: string,
+  position?: Vector3,
+  opts: { translucent?: boolean } = {},
+): Promise<ISceneLoaderAsyncResult> {
   const result = await SceneLoader.ImportMeshAsync("", ASSET_BASE, file, scene);
   if (position && result.meshes[0]) {
     result.meshes[0].position.copyFrom(position);
   }
+  enforceVertexColorMaterials(result.meshes, opts);
   return result;
 }
 
@@ -47,7 +54,9 @@ export async function loadWorld(scene: Scene): Promise<LoadedWorld> {
   // the procedural mesh.
   const sky = await importGlb(scene, "sky_dome_v1.glb");
   const ground = await importGlb(scene, "ground_pond_meadow_v1.glb");
-  const water = await importGlb(scene, "water_pond_v1.glb");
+  // Water is translucent — vertex colors with reduced alpha. Matches
+  // src/scene/world.ts's translucent: true handling.
+  const water = await importGlb(scene, "water_pond_v1.glb", undefined, { translucent: true });
 
   // Trees scattered at fixed positions; collider radius matches Three.js
   // src/scene/world.ts (0.18 trunk radius). Full scatter + standing/fallen
