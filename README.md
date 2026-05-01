@@ -1,6 +1,6 @@
 # beaverGame
 
-Three.js client for **Cozy Beaver** — a cozy 3D beaver simulator. Loads validated low-poly `.glb` artifacts produced by the sibling repo [`asset-foundry`](../asset-foundry).
+Babylon.js client for **Cozy Beaver** — a cozy 3D beaver simulator. Loads validated low-poly `.glb` artifacts produced by the sibling repo [`asset-foundry`](../asset-foundry).
 
 ## Quickstart (5 commands)
 
@@ -13,18 +13,18 @@ pnpm dev
 pnpm build
 ```
 
-Open <http://localhost:5173> after `pnpm dev`. The current build features procedural heightfield terrain, tree felling, log hauling with land/water speed modifiers, dam building with rising water, and terrain-clipped water rendering.
+Open <http://localhost:5173> after `pnpm dev`. The Three.js vertical slice featured procedural heightfield terrain, tree felling, log hauling with land/water speed modifiers, dam building with rising water, and terrain-clipped water rendering. These behaviours serve as test oracles for the ongoing Babylon.js migration.
 
 ## Architecture
 
-Vanilla Three.js + Vite + TypeScript. No React. No Module Federation. The dev-mode `GLTFLoader` wrapper refuses to load any `.glb` without a sibling `.validation.json` declaring `status: "validated"` — that file is produced by `asset-foundry`'s deterministic Validator.
+Babylon.js + Vite + TypeScript. No React. No Module Federation. The dev-mode asset loader refuses to load any `.glb` without a sibling `.validation.json` declaring `status: "validated"` — that file is produced by `asset-foundry`'s deterministic Validator.
 
 Read [`CLAUDE.md`](CLAUDE.md) for the project map and key ADRs, then [`decisions/adr/`](decisions/adr/) for the architectural decisions behind the choices.
 
-## Phase 0 status
+## Phase 0 status (closed)
 
-- [x] Vite + TS + Three.js scaffold builds cleanly
-- [x] `.glb` loads via `GLTFLoader` with a dev-mode validation tripwire
+- [x] Vite + TS + Babylon.js scaffold builds cleanly
+- [x] `.glb` loads with a dev-mode validation tripwire
 - [x] Procedural environment lighting (HDRI substitute until Phase 1)
 - [x] One asset (`birch_sapling`) round-trips from foundry → validator → browser
 - [ ] Committed HDRI replacing the `RoomEnvironment` fallback
