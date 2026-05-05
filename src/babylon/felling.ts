@@ -7,6 +7,14 @@ import type { ColliderRegistry } from "./collision";
 import { spawnLog, type LogEntity } from "./log";
 import { spawnStump, type StumpHandles } from "./stump";
 import { createWoodChips, type ChipsHandles } from "./particles";
+import type { FallWarningHandles } from "./falling-warning";
+
+// Trunk-strike parameters (used by the dodge mechanic). Strike width matches
+// the cone-wedge's tip half-width so the visual warning lines up with the hit
+// zone — no "I was outside the cone but got hit" or vice versa.
+const TRUNK_LENGTH = 3.0;
+const STRIKE_HALF_WIDTH = 0.7;
+const STRIKE_THRESHOLD_U = 0.5;
 
 // Hold E within INTERACT_RANGE of a tree → gnaw progress accumulates →
 // at 1.0, tree falls (eased tween) → log + stump spawn, trunk collider
@@ -30,6 +38,14 @@ export interface FellingOpts {
   scene: Scene;
   trees: TreeInstance[];
   colliders?: ColliderRegistry;
+  // Optional fall-warning visuals. When provided, felling notifies show/hide.
+  warning?: FallWarningHandles;
+  // Called the first frame the falling trunk overlaps the player's footprint
+  // (and the player is not invulnerable). Implemented as a one-shot — guards
+  // against repeat fires.
+  onSquash?: (treeId: string) => void;
+  // Returns true while the player can't be hit (dash i-frames, etc.).
+  isPlayerInvulnerable?: () => boolean;
 }
 
 export function createFellingSystem(opts: FellingOpts): FellingHandles {
@@ -53,21 +69,41 @@ export function createFellingSystem(opts: FellingOpts): FellingHandles {
     return best;
   }
 
-  function startFall(t: TreeInstance, player: PlayerHandles): void {
+  function startFall(t: TreeInstance): void {
     t.status = "falling";
     t.fallTimer = 0;
-    // Default: tree falls AWAY from the player along the player→tree axis.
-    // Random direction + warning + dodge mechanic land in the dodge-gameplay
-    // PR — until then the trunk consistently lands on the far side, so the
-    // player never gets clobbered by their own gnaw.
-    const dir = t.position.subtract(player.position);
-    dir.y = 0;
-    if (dir.lengthSquared() < 1e-6) dir.set(1, 0, 0);
-    dir.normalize();
-    // Y × dir so Quaternion.RotationAxis(fallAxis, +π/2) tips the trunk's
-    // local +Y onto +dir. Without this sign, Babylon's LH rotation conv.
-    // sends the trunk to -dir.
+    // Random horizontal fall direction. The dodge mechanic keeps the player
+    // out of the trunk's path.
+    const angle = Math.random() * Math.PI * 2;
+    const dir = new Vector3(Math.cos(angle), 0, Math.sin(angle));
+    t.fallDir = dir;
+    // For the trunk's local +Y axis to rotate toward `dir` under
+    // Quaternion.RotationAxis(fallAxis, +π/2), the axis must be Y × dir.
+    // Y × dir = (1*dir.z - 0*0, 0*dir.x - 0*dir.z, 0*0 - 1*dir.x)
+    //        = (dir.z, 0, -dir.x)
     t.fallAxis = new Vector3(dir.z, 0, -dir.x);
+    if (opts.warning) opts.warning.show(t.id, t.position, dir, FALL_DURATION);
+  }
+
+  // Squash check: the falling trunk lies along `along` from base to tip.
+  // We treat its swept rectangle (length TRUNK_LENGTH, half-width STRIKE_HALF_WIDTH)
+  // as the danger zone. Once fall progress passes STRIKE_THRESHOLD_U, the trunk
+  // is low enough to hit the player — fire onSquash if they're standing in it.
+  const squashed = new Set<string>();
+  function checkSquash(t: TreeInstance, u: number, player: PlayerHandles): void {
+    if (squashed.has(t.id)) return;
+    if (u < STRIKE_THRESHOLD_U) return;
+    if (!t.fallDir) return;
+    if (opts.isPlayerInvulnerable?.()) return;
+    const dx = player.position.x - t.position.x;
+    const dz = player.position.z - t.position.z;
+    // Project player offset onto along (= fallDir) and perp (perpendicular to fallDir, CCW around Y).
+    const sAlong = dx * t.fallDir.x + dz * t.fallDir.z;
+    const sPerp = dx * (-t.fallDir.z) + dz * t.fallDir.x;
+    if (sAlong < 0 || sAlong > TRUNK_LENGTH) return;
+    if (Math.abs(sPerp) > STRIKE_HALF_WIDTH) return;
+    squashed.add(t.id);
+    opts.onSquash?.(t.id);
   }
 
   function update(dt: number, player: PlayerHandles): void {
@@ -102,7 +138,7 @@ export function createFellingSystem(opts: FellingOpts): FellingHandles {
         }
 
         if (target.gnawProgress >= 1) {
-          startFall(target, player);
+          startFall(target);
           const burst = target.position.clone();
           burst.y += 0.25;
           chips.emit(burst, 8);
@@ -121,10 +157,12 @@ export function createFellingSystem(opts: FellingOpts): FellingHandles {
       t.root.position.copyFrom(t.position);
       t.root.rotationQuaternion = Quaternion.RotationAxis(t.fallAxis, angle);
 
+      checkSquash(t, u, player);
+
       if (u >= 1) {
+        if (opts.warning) opts.warning.hide(t.id);
         t.status = "fallen";
-        // Inverse of fallAxis = Y × dir: dir = -Y × fallAxis = (-fallAxis.z, 0, fallAxis.x)
-        const dir = new Vector3(-t.fallAxis.z, 0, t.fallAxis.x);
+        const dir = t.fallDir ?? new Vector3(1, 0, 0);
         const logPos = t.position.add(dir.scale(0.7));
         const logYaw = Math.atan2(dir.x, dir.z);
         logs.push(spawnLog(scene, logPos, logYaw));
