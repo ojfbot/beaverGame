@@ -107,7 +107,7 @@ export function createMinimap(opts: MinimapOpts): MinimapHandles {
 
     // Player triangle.
     const { px, py } = worldToPixel(player.position.x, player.position.z);
-    const yaw = player.root.rotation.y;
+    const yaw = player.yaw();
     const fx = -Math.sin(yaw);
     const fy = -Math.cos(yaw);
     // Right-vector = forward rotated 90° CW in 2D.
