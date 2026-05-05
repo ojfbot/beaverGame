@@ -13,7 +13,7 @@ pnpm dev
 pnpm build
 ```
 
-Open <http://localhost:5173> after `pnpm dev`. The Three.js vertical slice featured procedural heightfield terrain, tree felling, log hauling with land/water speed modifiers, dam building with rising water, and terrain-clipped water rendering. These behaviours serve as test oracles for the ongoing Babylon.js migration.
+Open <http://localhost:5173> after `pnpm dev`. The Babylon.js implementation features procedural heightfield terrain, tree felling, log hauling with land/water speed modifiers, dam building with rising water, terrain-clipped water rendering, Zelda/Mario-style controls, and a tree-fall dodge mechanic. The legacy Three.js implementation has been retired.
 
 ## Architecture
 
