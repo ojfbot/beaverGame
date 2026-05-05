@@ -37,12 +37,19 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+export type TreeStatus = "standing" | "gnawing" | "falling" | "fallen";
+
 export type TreeInstance = {
   id: string;
   root: TransformNode;
-  position: { x: number; y: number; z: number };
+  position: Vector3;
   scale: number;
   yaw: number;
+  // Felling state — mutated by src/babylon/felling.ts.
+  status: TreeStatus;
+  gnawProgress: number;
+  fallTimer: number;
+  fallAxis: Vector3 | null;
 };
 
 export type LoadedWorld = {
@@ -131,7 +138,17 @@ export async function loadWorld(scene: Scene): Promise<LoadedWorld> {
     const scale = TREE_SCALE_MIN + rng() * TREE_SCALE_RANGE;
     clone.scaling.set(scale, scale, scale);
 
-    trees.push({ id, root: clone, position: { x, y, z }, scale, yaw: treeYaw });
+    trees.push({
+      id,
+      root: clone,
+      position: new Vector3(x, y, z),
+      scale,
+      yaw: treeYaw,
+      status: "standing",
+      gnawProgress: 0,
+      fallTimer: 0,
+      fallAxis: null,
+    });
     treePositions.push({ x, z });
     // Padded above visual trunk silhouette so the beaver's head doesn't
     // penetrate when shoved against the trunk.
