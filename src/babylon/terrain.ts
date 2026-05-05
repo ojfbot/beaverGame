@@ -1,7 +1,10 @@
 import { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { RawTexture } from "@babylonjs/core/Materials/Textures/rawTexture";
+import { Constants } from "@babylonjs/core/Engines/constants";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
 
@@ -88,10 +91,16 @@ function lerp3(a: Color3, b: Color3, t: number, out: Color3): void {
 export class Terrain {
   readonly mesh: Mesh;
   private heights: Float32Array;
+  private positions: Float32Array | null = null;
+  private indices: number[] = [];
   private size: number;
   private segments: number;
+  private heightTex: RawTexture | null = null;
   readonly damSite: Vector3;
   readonly creekStart: Vector3;
+  // Bumped each time heights change; consumers (water shader, etc.) can
+  // poll & refresh derived data.
+  heightsRevision = 0;
 
   constructor(scene: Scene, opts: TerrainOpts) {
     this.size = opts.size;
@@ -198,9 +207,12 @@ export class Terrain {
     vertexData.indices = indices;
     vertexData.normals = normals;
     vertexData.colors = colors;
-    vertexData.applyToMesh(mesh);
-    mesh.convertToFlatShadedMesh();
+    // updatable=true so dig() can call updateVerticesData(position/normal)
+    // without rebuilding the mesh from scratch.
+    vertexData.applyToMesh(mesh, true);
     mesh.useVertexColors = true;
+    this.positions = new Float32Array(positions);
+    this.indices = indices;
 
     const mat = new StandardMaterial("terrain-mat", scene);
     mat.disableLighting = false;
@@ -268,5 +280,70 @@ export class Terrain {
 
   get worldSize(): number {
     return this.size;
+  }
+
+  // Single-channel R32F texture of the heightfield. Damming's water shader
+  // samples this to discard fragments where the ground rises above water,
+  // confining the flood to topographic depressions. Call markTextureDirty()
+  // (or dig() does it for you) to refresh after height changes.
+  toHeightTexture(scene: Scene): RawTexture {
+    if (this.heightTex) return this.heightTex;
+    const N = this.segments + 1;
+    this.heightTex = new RawTexture(
+      this.heights,
+      N,
+      N,
+      Constants.TEXTUREFORMAT_R,
+      scene,
+      false,
+      false,
+      Constants.TEXTURE_NEAREST_SAMPLINGMODE,
+      Constants.TEXTURETYPE_FLOAT,
+    );
+    this.heightTex.wrapU = Constants.TEXTURE_CLAMP_ADDRESSMODE;
+    this.heightTex.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;
+    return this.heightTex;
+  }
+
+  // Lower terrain heights in a circular brush around (cx, cz). Falloff is
+  // quadratic-smooth; depth is the maximum drop at the center. Updates the
+  // mesh positions/normals and the height texture so the water shader sees
+  // the new bowl on the very next frame.
+  dig(cx: number, cz: number, radius: number, depth: number): void {
+    if (!this.positions) return;
+    const N = this.segments + 1;
+    const fcx = this.worldToGridX(cx);
+    const fcz = this.worldToGridZ(cz);
+    // Convert world-space radius to grid-cell radius (grid spacing = size/segments).
+    const cellsPerMeter = this.segments / this.size;
+    const gr = radius * cellsPerMeter;
+    const minIx = Math.max(0, Math.floor(fcx - gr));
+    const maxIx = Math.min(N - 1, Math.ceil(fcx + gr));
+    const minIz = Math.max(0, Math.floor(fcz - gr));
+    const maxIz = Math.min(N - 1, Math.ceil(fcz + gr));
+    let touched = false;
+    for (let iz = minIz; iz <= maxIz; iz++) {
+      for (let ix = minIx; ix <= maxIx; ix++) {
+        const dx = ix - fcx;
+        const dz = iz - fcz;
+        const d = Math.sqrt(dx * dx + dz * dz) / gr;
+        if (d >= 1) continue;
+        const falloff = (1 - d) * (1 - d);  // smooth bowl
+        const idx = iz * N + ix;
+        const dy = depth * falloff;
+        this.heights[idx]! -= dy;
+        // Write back into the position buffer (Y is the second component).
+        this.positions[idx * 3 + 1] = this.heights[idx]!;
+        touched = true;
+      }
+    }
+    if (!touched) return;
+    this.heightsRevision++;
+    this.mesh.updateVerticesData(VertexBuffer.PositionKind, this.positions);
+    // Recompute normals so the bowl actually shades like a bowl.
+    const newNormals: number[] = [];
+    VertexData.ComputeNormals(this.positions, this.indices, newNormals);
+    this.mesh.updateVerticesData(VertexBuffer.NormalKind, newNormals);
+    if (this.heightTex) this.heightTex.update(this.heights);
   }
 }
