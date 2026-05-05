@@ -49,6 +49,9 @@ export type TreeInstance = {
   status: TreeStatus;
   gnawProgress: number;
   fallTimer: number;
+  // Horizontal unit vector pointing toward where the trunk's tip lands.
+  // Source of truth — fallAxis (Y × fallDir) is derived from it.
+  fallDir: Vector3 | null;
   fallAxis: Vector3 | null;
 };
 
@@ -147,6 +150,7 @@ export async function loadWorld(scene: Scene): Promise<LoadedWorld> {
       status: "standing",
       gnawProgress: 0,
       fallTimer: 0,
+      fallDir: null,
       fallAxis: null,
     });
     treePositions.push({ x, z });

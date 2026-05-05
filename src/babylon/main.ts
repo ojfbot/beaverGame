@@ -5,6 +5,9 @@ import { createFellingSystem } from "./felling";
 import { createHaulingSystem } from "./hauling";
 import { createDammingSystem } from "./damming";
 import { createDiggingSystem } from "./digging";
+import { createDashSystem } from "./dash";
+import { createFallWarning } from "./falling-warning";
+import { createGameOver } from "./game-over";
 import { tryConnectFoundry, callFoundryTool } from "./foundry-client";
 import { createUI } from "./ui";
 
@@ -16,16 +19,24 @@ sb.start();
 
 (async () => {
   const world = await loadWorld(sb.scene);
+  const dash = createDashSystem();
   const player = await spawnPlayer(sb.scene, {
     terrain: world.terrain,
     camera: sb.camera,
     colliders: world.colliders,
+    dash,
   });
+
+  const fallWarning = createFallWarning(sb.scene, world.terrain);
+  const gameOver = createGameOver();
 
   const felling = createFellingSystem({
     scene: sb.scene,
     trees: world.trees,
     colliders: world.colliders,
+    warning: fallWarning,
+    isPlayerInvulnerable: () => dash.isInvulnerable(),
+    onSquash: () => gameOver.show(),
   });
 
   const damming = createDammingSystem({
@@ -65,6 +76,7 @@ sb.start();
   });
 
   sb.setTick((dt) => {
+    if (gameOver.isShowing()) return;
     // Order: felling claims interactHeld+queued first (gnaw if standing tree
     // is in range), hauling claims queued next (pickup/drop if a log is
     // nearby), damming claims dropped logs, digging consumes whatever's left.
@@ -72,6 +84,7 @@ sb.start();
     hauling.update(dt, player, felling.logs);
     damming.update(dt, player, felling.logs);
     digging.update(dt, player);
+    fallWarning.update(dt);
     player.speedMultiplier = hauling.speedMultiplier;
     player.update(dt);
     // Drain edge-trigger so a single E press doesn't fire repeatedly across
@@ -91,6 +104,9 @@ sb.start();
       hauling,
       damming,
       digging,
+      dash,
+      fallWarning,
+      gameOver,
       ui,
       foundry,
       callFoundryTool,
