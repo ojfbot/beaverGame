@@ -133,7 +133,9 @@ export async function loadWorld(scene: Scene): Promise<LoadedWorld> {
 
     trees.push({ id, root: clone, position: { x, y, z }, scale, yaw: treeYaw });
     treePositions.push({ x, z });
-    colliders.add({ id, cx: x, cz: z, radius: 0.18 * scale });
+    // Padded above visual trunk silhouette so the beaver's head doesn't
+    // penetrate when shoved against the trunk.
+    colliders.add({ id, cx: x, cz: z, radius: 0.28 * scale });
   }
 
   return { terrain, colliders, sky, trees, treePositions };
