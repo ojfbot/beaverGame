@@ -10,7 +10,9 @@ import type { ColliderRegistry } from "./collision";
 import { applySoftBound } from "./bounds";
 import { enforceVertexColorMaterials } from "./materials";
 
-const PLAYER_RADIUS = 0.30;
+// Beaver collision radius — wider than 0.30 because the model silhouette
+// (head + flanks) extends past that and was visibly clipping into trunks.
+const PLAYER_RADIUS = 0.45;
 const WALK_SPEED = 2.4;
 const SPRINT_MULT = 1.8;
 const TURN_SPEED = 2.6;
@@ -29,6 +31,7 @@ export interface PlayerHandles {
   root: TransformNode;
   position: Vector3;
   forward: () => Vector3;
+  yaw: () => number;
   state: PlayerInputState;
   speedMultiplier: number;
   update(dt: number): void;
@@ -112,24 +115,43 @@ export async function spawnPlayer(scene: Scene, opts: PlayerOpts): Promise<Playe
     new Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
 
   function update(dt: number): void {
-    const turn = (state.left ? 1 : 0) - (state.right ? 1 : 0);
-    if (turn !== 0) {
-      const dYaw = turn * TURN_SPEED * dt;
-      yaw += dYaw;
-      root.rotate(Vector3.Up(), dYaw, Space.LOCAL);
-    }
+    // Camera-relative WASD (Zelda/Mario-style). W = away from camera, S = toward,
+    // A/D = camera-relative left/right strafe. Body yaw smoothly chases the
+    // velocity vector so the beaver always faces where it walks.
+    const f = (state.forward ? 1 : 0) - (state.backward ? 1 : 0);
+    const r = (state.right ? 1 : 0) - (state.left ? 1 : 0);
+    const moving = f !== 0 || r !== 0;
 
-    const move = (state.forward ? 1 : 0) - (state.backward ? 1 : 0);
-    if (move !== 0) {
+    if (moving) {
+      const camForward = root.position.subtract(opts.camera.position);
+      camForward.y = 0;
+      // Guard: if camera is stacked exactly on the beaver (zero-length), bail
+      // — otherwise the cross + normalize below NaN the position vector.
+      if (camForward.lengthSquared() < 1e-6) return;
+      camForward.normalize();
+      // Babylon is left-handed: with the camera at +Z looking toward -Z, world
+      // +X projects to screen-LEFT, so screen-right = Cross(up, forward).
+      const camRight = Vector3.Cross(Vector3.Up(), camForward).normalize();
+      const move = camForward.scale(f).addInPlace(camRight.scale(r));
+      if (move.lengthSquared() > 0) move.normalize();
       const speed = WALK_SPEED * (state.sprint ? SPRINT_MULT : 1) * handles.speedMultiplier;
-      const f = forward();
-      root.position.addInPlace(f.scale(move * speed * dt));
+      root.position.addInPlace(move.scale(speed * dt));
+
+      // forward() = (-sin yaw, 0, -cos yaw) ⇒ targetYaw for moving in `move` is atan2(-x, -z).
+      const targetYaw = Math.atan2(-move.x, -move.z);
+      let dYaw = targetYaw - yaw;
+      while (dYaw > Math.PI) dYaw -= 2 * Math.PI;
+      while (dYaw < -Math.PI) dYaw += 2 * Math.PI;
+      const maxStep = TURN_SPEED * dt;
+      const step = Math.max(-maxStep, Math.min(maxStep, dYaw));
+      yaw += step;
+      root.rotate(Vector3.Up(), step, Space.LOCAL);
     }
 
     if (opts.colliders) {
-      const r = opts.colliders.resolve(root.position.x, root.position.z, PLAYER_RADIUS);
-      root.position.x = r.x;
-      root.position.z = r.z;
+      const c = opts.colliders.resolve(root.position.x, root.position.z, PLAYER_RADIUS);
+      root.position.x = c.x;
+      root.position.z = c.z;
     }
 
     const bounded = applySoftBound(root.position, {
@@ -139,20 +161,47 @@ export async function spawnPlayer(scene: Scene, opts: PlayerOpts): Promise<Playe
     });
     root.position.copyFrom(bounded);
 
-    const ground = opts.terrain.heightAt(root.position.x, root.position.z);
-    const bob = move !== 0 ? Math.abs(Math.sin(performance.now() * 0.012)) * 0.04 : 0;
+    // Sample terrain at the beaver's footprint corners, not just its center.
+    // On steep slopes, a center-only sample lets the body clip into the hill
+    // wall right next to the beaver. Using max() lifts the beaver to ride on
+    // top of the highest terrain in its footprint.
+    const fr = PLAYER_RADIUS;
+    const ground = Math.max(
+      opts.terrain.heightAt(root.position.x, root.position.z),
+      opts.terrain.heightAt(root.position.x + fr, root.position.z),
+      opts.terrain.heightAt(root.position.x - fr, root.position.z),
+      opts.terrain.heightAt(root.position.x, root.position.z + fr),
+      opts.terrain.heightAt(root.position.x, root.position.z - fr),
+    );
+    const bob = moving ? Math.abs(Math.sin(performance.now() * 0.012)) * 0.04 : 0;
     root.position.y = ground + bob;
 
-    // Yaw-lock the camera to the beaver — legacy Three.js behavior. Camera
-    // alpha tracks the closure yaw (NOT root.rotation.y, which is stale when
-    // a rotationQuaternion is set) so "behind beaver" stays behind.
-    opts.camera.alpha = yaw + Math.PI / 2;
+    // Camera-above-terrain enforcement. ArcRotateCamera's position is recomputed
+    // each frame from (alpha, beta, radius, target). Predict where it will land
+    // and tighten beta if that point would be inside / below the terrain.
+    const cam = opts.camera;
+    const target = cam.target;
+    const sinB = Math.sin(cam.beta);
+    const cosA = Math.cos(cam.alpha);
+    const sinA = Math.sin(cam.alpha);
+    const camPredX = target.x + cam.radius * sinB * cosA;
+    const camPredZ = target.z + cam.radius * sinB * sinA;
+    const CAM_CLEARANCE = 0.6;
+    const minCamY = opts.terrain.heightAt(camPredX, camPredZ) + CAM_CLEARANCE;
+    const cosBNeeded = (minCamY - target.y) / cam.radius;
+    if (cosBNeeded > -1 && cosBNeeded < 1) {
+      const maxBeta = Math.acos(cosBNeeded);
+      const upper = cam.upperBetaLimit ?? maxBeta;
+      const dynUpper = Math.min(upper, maxBeta);
+      if (cam.beta > dynUpper) cam.beta = dynUpper;
+    }
   }
 
   const handles: PlayerHandles = {
     root,
     position: root.position,
     forward,
+    yaw: () => yaw,
     state,
     speedMultiplier: 1.0,
     update,

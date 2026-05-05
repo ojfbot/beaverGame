@@ -14,6 +14,7 @@ export class BabylonScene {
   readonly camera: ArcRotateCamera;
   private tickFn: TickFn | null = null;
   private destroyed = false;
+  private wheelListener: ((e: WheelEvent) => void) | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.engine = new Engine(canvas, true, {
@@ -53,15 +54,37 @@ export class BabylonScene {
     this.camera.maxZ = 200;
     this.camera.lowerRadiusLimit = 3;
     this.camera.upperRadiusLimit = 14;
-    this.camera.lowerBetaLimit = Math.PI / 6;       // don't go directly above
-    this.camera.upperBetaLimit = Math.PI / 2.05;    // prevent flipping under terrain
+    this.camera.lowerBetaLimit = Math.PI / 6;
+    // 1.35 rad ≈ 13° above horizon. Tighter than π/2.05 (which is at the
+    // equator) to keep the camera comfortably above the terrain at radius 4.8
+    // even on undulating heightfield (amplitude 3.2 m).
+    this.camera.upperBetaLimit = 1.35;
     this.camera.wheelDeltaPercentage = 0.01;
     this.camera.attachControl(canvas, true);
-    // Remove the camera's keyboard input — Babylon's ArcRotateCamera by
-    // default binds arrow keys to keysLeft/Right/Up/Down for orbit, which
-    // races with player.ts's beaver-turn handler. Keys are reserved for the
-    // beaver; touchpad/mouse drag + scroll-wheel still orbit the camera.
+    // Keyboard reserved for player.ts. Default mouse-wheel input is replaced
+    // below so two-finger trackpad pan can orbit while pinch (ctrlKey on Mac)
+    // zooms.
     this.camera.inputs.removeByType("ArcRotateCameraKeyboardMoveInput");
+    this.camera.inputs.removeByType("ArcRotateCameraMouseWheelInput");
+
+    const ORBIT_SENS = 0.005;   // rad / pixel for two-finger pan
+    const ZOOM_SENS = 0.0015;   // proportional radius / pixel for pinch
+    this.wheelListener = (e: WheelEvent) => {
+      e.preventDefault();
+      if (e.ctrlKey) {
+        const next = this.camera.radius * (1 + e.deltaY * ZOOM_SENS);
+        const lo = this.camera.lowerRadiusLimit ?? next;
+        const hi = this.camera.upperRadiusLimit ?? next;
+        this.camera.radius = Math.min(hi, Math.max(lo, next));
+      } else {
+        this.camera.alpha -= e.deltaX * ORBIT_SENS;
+        const nextBeta = this.camera.beta - e.deltaY * ORBIT_SENS;
+        const betaLo = this.camera.lowerBetaLimit ?? nextBeta;
+        const betaHi = this.camera.upperBetaLimit ?? nextBeta;
+        this.camera.beta = Math.min(betaHi, Math.max(betaLo, nextBeta));
+      }
+    };
+    canvas.addEventListener("wheel", this.wheelListener, { passive: false });
 
     // Hemispheric light — legacy Three.js was THREE.HemisphereLight(0xffe9c2, 0x4d6a3a, 0.55).
     // Sky colour warms ambient; ground colour adds a mossy bounce.
@@ -96,6 +119,10 @@ export class BabylonScene {
 
   destroy(): void {
     this.destroyed = true;
+    if (this.wheelListener) {
+      this.canvas.removeEventListener("wheel", this.wheelListener);
+      this.wheelListener = null;
+    }
     this.engine.stopRenderLoop();
     this.scene.dispose();
     this.engine.dispose();
