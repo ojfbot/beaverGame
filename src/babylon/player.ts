@@ -7,6 +7,8 @@ import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
 import "@babylonjs/loaders/glTF";
 import type { Terrain } from "./terrain";
 import type { ColliderRegistry } from "./collision";
+import type { DashHandles } from "./dash";
+import { DASH_SPEED_MULT } from "./dash";
 import { applySoftBound } from "./bounds";
 import { enforceVertexColorMaterials } from "./materials";
 
@@ -43,6 +45,10 @@ export interface PlayerOpts {
   camera: ArcRotateCamera;
   colliders?: ColliderRegistry;
   spawnXZ?: { x: number; z: number };
+  // Optional double-tap dash. When dash.isDashing() returns true, the dash
+  // direction (camera-relative) overrides WASD this frame and DASH_SPEED_MULT
+  // is applied on top of walk speed.
+  dash?: DashHandles;
 }
 
 function createInputBinding(state: PlayerInputState): { destroy(): void } {
@@ -118,8 +124,11 @@ export async function spawnPlayer(scene: Scene, opts: PlayerOpts): Promise<Playe
     // Camera-relative WASD (Zelda/Mario-style). W = away from camera, S = toward,
     // A/D = camera-relative left/right strafe. Body yaw smoothly chases the
     // velocity vector so the beaver always faces where it walks.
-    const f = (state.forward ? 1 : 0) - (state.backward ? 1 : 0);
-    const r = (state.right ? 1 : 0) - (state.left ? 1 : 0);
+    // Dash overrides WASD this frame: direction comes from the captured tap,
+    // speed is multiplied. Held WASD inputs are ignored during the dash window.
+    const dashing = opts.dash?.isDashing() ?? false;
+    const f = dashing ? opts.dash!.state.dirF : ((state.forward ? 1 : 0) - (state.backward ? 1 : 0));
+    const r = dashing ? opts.dash!.state.dirR : ((state.right ? 1 : 0) - (state.left ? 1 : 0));
     const moving = f !== 0 || r !== 0;
 
     if (moving) {
@@ -134,7 +143,8 @@ export async function spawnPlayer(scene: Scene, opts: PlayerOpts): Promise<Playe
       const camRight = Vector3.Cross(Vector3.Up(), camForward).normalize();
       const move = camForward.scale(f).addInPlace(camRight.scale(r));
       if (move.lengthSquared() > 0) move.normalize();
-      const speed = WALK_SPEED * (state.sprint ? SPRINT_MULT : 1) * handles.speedMultiplier;
+      const speed = WALK_SPEED * (state.sprint ? SPRINT_MULT : 1) * handles.speedMultiplier
+        * (dashing ? DASH_SPEED_MULT : 1);
       root.position.addInPlace(move.scale(speed * dt));
 
       // forward() = (-sin yaw, 0, -cos yaw) ⇒ targetYaw for moving in `move` is atan2(-x, -z).
@@ -191,6 +201,7 @@ export async function spawnPlayer(scene: Scene, opts: PlayerOpts): Promise<Playe
     const cosBNeeded = (minCamY - target.y) / cam.radius;
     if (cosBNeeded > -1 && cosBNeeded < 1) {
       const maxBeta = Math.acos(cosBNeeded);
+      // Take the tighter of the user's static cap and the dynamic terrain cap.
       const upper = cam.upperBetaLimit ?? maxBeta;
       const dynUpper = Math.min(upper, maxBeta);
       if (cam.beta > dynUpper) cam.beta = dynUpper;
