@@ -4,21 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-The Three.js client for **Cozy Beaver** — a cozy 3D beaver simulator. Vanilla TypeScript + Vite + Three.js. The game loads validated `.glb` artifacts produced by the sibling repo [`asset-foundry/`](../asset-foundry). No runtime AI ships in the client (see `decisions/adr/0006-standalone-not-frame-subapp.md`).
+The Babylon.js client for **Cozy Beaver** — a cozy 3D beaver simulator. Vanilla TypeScript + Vite + Babylon.js. The game loads validated `.glb` artifacts produced by the sibling repo [`asset-foundry/`](../asset-foundry). No runtime AI ships in the client (see `decisions/adr/0006-standalone-not-frame-subapp.md`).
 
 **First read for new sessions:** `domain-knowledge/frame-os-context.md` for the cluster context, then this repo's `decisions/adr/`.
 
 ## Architecture (the big picture)
 
-The client is a **single-canvas, no-React, vanilla Three.js scene** with a thin module split:
+The client is a **single-canvas, no-React, vanilla Babylon.js scene** with a thin module split:
 
 - `src/main.ts` — 22-line bootstrap: instantiates `SceneBootstrap`, kicks off `composeWorld`, then `spawnPlayer`, hands the player's `update` to the bootstrap as the per-frame tick. Exposes `window.__beaver` for the Playwright snap script.
-- `src/scene/bootstrap.ts` — renderer/camera/RAF lifecycle. Pattern adapted from `landing/src/components/Hero/shader.ts:84–187` (start/resize/destroy with explicit RAF cancellation). The renderer ships with **`THREE.NoToneMapping`** intentionally — ACES washes our unlit vertex-colour palette to near-white.
+- `src/scene/bootstrap.ts` — engine/camera/render-loop lifecycle. The renderer ships with no tone mapping intentionally — ACES washes our unlit vertex-colour palette to near-white.
 - `src/scene/world.ts` — `composeWorld(scene)` loads ground/sky/pond/saplings in parallel, scatters trees deterministically, applies a forward-bias filter so the spawn view is populated. Uses a custom mulberry32 PRNG with a fixed seed so the layout is reproducible.
 - `src/scene/player.ts` — `spawnPlayer(scene)` returns a handles object whose `update(dt, camera)` does WASD movement + 3rd-person follow camera with soft lag. Beaver model from glTF faces **-Z** (Blender +Y forward → glTF -Z), so `forward` and `cameraOffset` use negative Z signs accordingly.
-- `src/scene/load-glb.ts` — `GLTFLoader` wrapper. **In dev mode, refuses to load any `.glb` without a sibling `<asset>.validation.json` declaring `status: "validated"`.** This is the contract with asset-foundry.
-- `src/scene/materials.ts` — `enforceVertexColorMaterials(group, opts?)` walks the loaded glTF and swaps any `MeshStandardMaterial` with a COLOR_0 attribute to `MeshBasicMaterial({vertexColors: true, side: DoubleSide})`. Belt-and-braces against glTFs that didn't ship as KHR_materials_unlit.
-- `src/scene/lighting.ts` — `applyHdriEnvironment(scene, hdrPath)`. Sniffs Content-Type because Vite's SPA fallback returns `200 text/html` for missing assets, which would otherwise feed HTML into RGBELoader. Currently a no-op (no committed HDRI); fine because all materials are unlit.
+- `src/scene/load-glb.ts` — glTF loader wrapper. **In dev mode, refuses to load any `.glb` without a sibling `<asset>.validation.json` declaring `status: "validated"`.** This is the contract with asset-foundry.
+- `src/scene/materials.ts` — `enforceVertexColorMaterials(group, opts?)` walks the loaded glTF and ensures meshes with COLOR_0 attributes use unlit vertex-colour materials. Belt-and-braces against glTFs that didn't ship as KHR_materials_unlit.
+- `src/scene/lighting.ts` — `applyHdriEnvironment(scene, hdrPath)`. Sniffs Content-Type because Vite's SPA fallback returns `200 text/html` for missing assets. Currently a no-op (no committed HDRI); fine because all materials are unlit.
 - `src/scene/types.ts` — TypeScript shape mirroring the `<asset>.validation.json` schema produced by `asset-foundry/src/validator/`.
 
 ## Contract with asset-foundry
@@ -52,7 +52,7 @@ The snap script is the iteration loop while changing visuals: edit code → save
 ## Build gotchas
 
 - **`tsconfig.json` has `"noEmit": true`** and `pnpm build` runs `vite build` only (no `tsc -b`). Reason: an earlier `tsc -b` left `.js` shadow files in `src/` (e.g. `src/scene/bootstrap.js`). Vite's resolver picks `.js` next to `.ts` first, which silently froze the runtime on stale class definitions and produced confusing "method is not a function" errors. **Never re-enable emit in this tsconfig** — typecheck stays via `tsc --noEmit`.
-- **`THREE.WebGLRenderer.toneMapping = THREE.NoToneMapping`** in `bootstrap.ts`. Switching to ACES will wash the entire palette unless you also switch to lit (PBR) materials and a real HDRI.
+- **Tone mapping is disabled** in `bootstrap.ts`. Switching to ACES will wash the entire palette unless you also switch to lit (PBR) materials and a real HDRI.
 - **Vite's SPA fallback returns 200/text/html for missing public assets**. Any code that tries to load `/assets/foo.<ext>` should sniff Content-Type before parsing the body. See `src/scene/lighting.ts` for the pattern.
 
 ## Player + camera coordinate system
@@ -63,7 +63,7 @@ Blender models authored with `+Y` as forward export to glTF with `-Z` as forward
 
 | ADR | Subject |
 |----|--------|
-| [0001](decisions/adr/0001-threejs-vanilla-not-r3f.md) | Three.js vanilla over React Three Fiber |
+| [0001](decisions/adr/0001-threejs-vanilla-not-r3f.md) | Three.js vanilla over React Three Fiber (superseded by Babylon.js migration) |
 | [0002](decisions/adr/0002-webgl2-defer-webgpu.md) | WebGL2 ship, WebGPU later |
 | [0003](decisions/adr/0003-typescript-everywhere.md) | TS everywhere; Python only as build artifact |
 | [0004](decisions/adr/0004-gltf-binary-unlit-vertex-colors.md) | glTF `.glb` + KHR_materials_unlit + vertex colours |
